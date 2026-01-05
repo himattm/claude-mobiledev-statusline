@@ -29,6 +29,11 @@ ANDROID_VERSION_CACHE="/tmp/claude-statusline-android-versions"
 IOS_VERSION_CACHE="/tmp/claude-statusline-ios-versions"
 APP_VERSION_CACHE_MAX_AGE=30  # seconds
 
+# Cache settings for git info (avoid hammering git)
+GIT_INFO_CACHE="/tmp/claude-statusline-git-info"
+GIT_DIFF_CACHE="/tmp/claude-statusline-git-diff"
+GIT_CACHE_MAX_AGE=2  # seconds
+
 
 # Default section order (gradle/xcode before devices since devices go on new line)
 DEFAULT_SECTIONS='["dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp", "devices"]'
@@ -238,8 +243,8 @@ get_context_bar() {
     echo "${color}${bar} ${pct}%${RESET}"
 }
 
-# Function to get git info with register branch indicator
-get_git_info() {
+# Function to get git info with register branch indicator (cached)
+get_git_info_uncached() {
     if ! timeout 1 git rev-parse --git-dir > /dev/null 2>&1; then
         echo ""
         return
@@ -266,8 +271,24 @@ get_git_info() {
     echo "${BRANCH}${DIRTY}"
 }
 
-# Function to get git diff stats (lines added/removed since last commit)
-get_git_diff_stats() {
+get_git_info() {
+    local cache_file="${GIT_INFO_CACHE}-$(echo "$PROJECT_DIR" | md5 -q)"
+
+    if [ -f "$cache_file" ]; then
+        local cache_age=$(($(date +%s) - $(stat -f %m "$cache_file" 2>/dev/null || echo 0)))
+        if [ "$cache_age" -lt "$GIT_CACHE_MAX_AGE" ]; then
+            cat "$cache_file"
+            return
+        fi
+    fi
+
+    local info=$(get_git_info_uncached)
+    echo "$info" > "$cache_file"
+    echo "$info"
+}
+
+# Function to get git diff stats (lines added/removed since last commit, cached)
+get_git_diff_stats_uncached() {
     if ! timeout 1 git rev-parse --git-dir > /dev/null 2>&1; then
         echo "0 0"
         return
@@ -276,6 +297,22 @@ get_git_diff_stats() {
     # Get stats for both staged and unstaged changes (with timeout to avoid blocking)
     local stats=$(timeout 1 git diff --numstat HEAD 2>/dev/null | awk '{add+=$1; del+=$2} END {print add+0, del+0}')
     echo "${stats:-0 0}"
+}
+
+get_git_diff_stats() {
+    local cache_file="${GIT_DIFF_CACHE}-$(echo "$PROJECT_DIR" | md5 -q)"
+
+    if [ -f "$cache_file" ]; then
+        local cache_age=$(($(date +%s) - $(stat -f %m "$cache_file" 2>/dev/null || echo 0)))
+        if [ "$cache_age" -lt "$GIT_CACHE_MAX_AGE" ]; then
+            cat "$cache_file"
+            return
+        fi
+    fi
+
+    local stats=$(get_git_diff_stats_uncached)
+    echo "$stats" > "$cache_file"
+    echo "$stats"
 }
 
 # Get version for a specific package
