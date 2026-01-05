@@ -1,3 +1,7 @@
 {
-  "icon": "⌸"
+  "icon": "⌸",
+  "sections": [
+    ["dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp"],
+    ["devices"]
+  ]
 }

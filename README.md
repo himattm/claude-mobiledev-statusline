@@ -77,7 +77,20 @@ Create `~/.claude/statusline-config.json` for defaults across all repos:
 }
 ```
 
-Per-repo config overrides global config.
+### Local Overrides
+
+Create `.claude-statusline.local.json` for machine-specific settings that aren't committed:
+
+```json
+{
+  "icon": "🔧"
+}
+```
+
+**Config precedence (highest to lowest):**
+1. `.claude-statusline.local.json` - local overrides (gitignored)
+2. `.claude-statusline.json` - per-repo config (committed)
+3. `~/.claude/statusline-config.json` - global defaults
 
 ### Sections
 
@@ -91,7 +104,36 @@ Control what appears and in what order:
 
 Available: `dir`, `model`, `context`, `linesChanged`, `cost`, `git`, `gradle`, `xcode`, `mcp`, `devices`
 
-Note: `devices` appears on a new line when shown.
+### Full Example Config
+
+A complete `.claude-statusline.json` with all available options:
+
+```json
+{
+  "icon": "🤖",
+  "sections": [
+    ["dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp"],
+    ["devices"]
+  ],
+  "android": {
+    "packages": ["com.myapp.debug", "com.myapp", "com.myapp.*"]
+  },
+  "ios": {
+    "bundleIds": ["com.myapp.debug", "com.myapp.*"]
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `icon` | Emoji prefix for directory display |
+| `sections` | Array of sections (single line) or array of arrays (multi-line) |
+| `android.packages` | Package names to check for version display (supports `*` glob) |
+| `ios.bundleIds` | Bundle IDs to check for version display (supports `*` glob) |
+
+**Single-line format:** `"sections": ["dir", "model", "context", ...]`
+
+**Multi-line format:** `"sections": [["line1", "sections"], ["line2", "sections"], ...]`
 
 ## Features
 

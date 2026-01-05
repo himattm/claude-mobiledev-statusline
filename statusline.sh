@@ -34,7 +34,7 @@ APP_VERSION_CACHE_MAX_AGE=30  # seconds
 DEFAULT_SECTIONS='["dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp", "devices"]'
 
 # Load config from .claude-statusline.json (cached per session)
-# Precedence: per-repo config > global config > defaults
+# Precedence: local override > per-repo config > global config > defaults
 get_config() {
     local cache_key=$(echo "$PROJECT_DIR" | md5 -q)
     local cache_file="${CONFIG_CACHE}-${cache_key}"
@@ -63,6 +63,12 @@ get_config() {
         config=$(echo "$global_config" | jq --arg icon "$icon" '. + {icon: $icon}')
     else
         config="$global_config"
+    fi
+
+    # Local override takes highest precedence (not committed to git)
+    if [ -f "${PROJECT_DIR}/.claude-statusline.local.json" ]; then
+        local local_config=$(cat "${PROJECT_DIR}/.claude-statusline.local.json")
+        config=$(echo "$config $local_config" | jq -s '.[0] * .[1]')
     fi
 
     # Fallback to empty object if no config found
@@ -278,10 +284,16 @@ find_matching_packages() {
 
 # Function to get app version for a single Android device
 # Uses packages from config, supports glob patterns
+# Returns: version if found, "--" if packages configured but not found, empty if no packages configured
 get_android_app_version() {
     local serial=$1
     local packages_json=$(config_get '.android.packages' '[]')
     local packages=$(echo "$packages_json" | jq -r '.[]' 2>/dev/null)
+
+    # If no packages configured, return empty (don't show version)
+    if [ -z "$packages" ]; then
+        return
+    fi
 
     for pattern in $packages; do
         if [[ "$pattern" == *"*"* ]]; then
@@ -303,6 +315,7 @@ get_android_app_version() {
             fi
         fi
     done
+    # Packages configured but not found
     echo "--"
 }
 
@@ -320,10 +333,15 @@ refresh_android_version_cache() {
         if [ "$serial" = "$ANDROID_SERIAL" ] || [ "$serial_count" -eq 1 ]; then
             icon="$ANDROID_ICON_ACTIVE"
         fi
+        # Only show :version if version is available
+        local device_info="${icon} ${serial}"
+        if [ -n "$ver" ]; then
+            device_info="${device_info}:${ver}"
+        fi
         if [ -n "$versions" ]; then
-            versions="${versions}${DEVICE_DIVIDER}${icon} ${serial}:${ver}"
+            versions="${versions}${DEVICE_DIVIDER}${device_info}"
         else
-            versions="${icon} ${serial}:${ver}"
+            versions="${device_info}"
         fi
     done
 
@@ -356,11 +374,13 @@ get_android_versions() {
 }
 
 # Get iOS app version for a simulator (no caching - called by refresh function)
+# Returns: version if found, "--" if bundleIds configured but not found, empty if no bundleIds configured
 get_ios_app_version() {
     local udid=$1
     local bundle_ids_json=$(config_get '.ios.bundleIds' '[]')
     local bundle_ids=$(echo "$bundle_ids_json" | jq -r '.[]' 2>/dev/null)
 
+    # If no bundleIds configured, return empty (don't show version)
     if [ -z "$bundle_ids" ]; then
         return
     fi
@@ -389,6 +409,8 @@ get_ios_app_version() {
             fi
         fi
     done
+    # bundleIds configured but not found
+    echo "--"
 }
 
 # Shorten simulator names for compact display
@@ -601,82 +623,109 @@ fi
 
 # Get sections order from config (or use defaults)
 SECTIONS_JSON=$(config_get '.sections' "$DEFAULT_SECTIONS")
-SECTIONS=$(echo "$SECTIONS_JSON" | jq -r '.[]' 2>/dev/null)
 
-# Build output in configured order
-for section in $SECTIONS; do
-    case "$section" in
-        dir)
-            # Show project name and intermediate dirs in dim cyan, final dir in bright cyan
-            if [ -n "$SUBDIR" ]; then
-                ABBREV_NAME=$(abbreviate_name "$PROJECT_NAME")
-                COMPACT_SUBDIR=$(compact_subdir "$SUBDIR")
-                # Split: everything up to last / is dim, final segment is bright
-                SUBDIR_PREFIX="${COMPACT_SUBDIR%/*}"
-                SUBDIR_FINAL="${COMPACT_SUBDIR##*/}"
-                if [ "$SUBDIR_PREFIX" != "$COMPACT_SUBDIR" ]; then
-                    # Has intermediate dirs
-                    OUTPUT+="${SEPARATOR}${DIR_ICON}${DIM}${CYAN}${ABBREV_NAME}${SUBDIR_PREFIX}/${RESET}${CYAN}${SUBDIR_FINAL}${RESET}"
+# Check if sections is array of arrays (multi-line) or single array
+IS_MULTILINE=$(echo "$SECTIONS_JSON" | jq -r 'if type == "array" and (.[0] | type) == "array" then "true" else "false" end' 2>/dev/null)
+
+# Function to build output for a single line of sections
+build_line() {
+    local sections_for_line="$1"
+    local line_output=""
+    local sep=""
+
+    for section in $sections_for_line; do
+        case "$section" in
+            dir)
+                # Show project name and intermediate dirs in dim cyan, final dir in bright cyan
+                if [ -n "$SUBDIR" ]; then
+                    ABBREV_NAME=$(abbreviate_name "$PROJECT_NAME")
+                    COMPACT_SUBDIR=$(compact_subdir "$SUBDIR")
+                    # Split: everything up to last / is dim, final segment is bright
+                    SUBDIR_PREFIX="${COMPACT_SUBDIR%/*}"
+                    SUBDIR_FINAL="${COMPACT_SUBDIR##*/}"
+                    if [ "$SUBDIR_PREFIX" != "$COMPACT_SUBDIR" ]; then
+                        # Has intermediate dirs
+                        line_output+="${sep}${DIR_ICON}${DIM}${CYAN}${ABBREV_NAME}${SUBDIR_PREFIX}/${RESET}${CYAN}${SUBDIR_FINAL}${RESET}"
+                    else
+                        # Single subdir (COMPACT_SUBDIR is like "/screenshots")
+                        line_output+="${sep}${DIR_ICON}${DIM}${CYAN}${ABBREV_NAME}/${RESET}${CYAN}${SUBDIR_FINAL}${RESET}"
+                    fi
                 else
-                    # Single subdir (COMPACT_SUBDIR is like "/screenshots")
-                    OUTPUT+="${SEPARATOR}${DIR_ICON}${DIM}${CYAN}${ABBREV_NAME}/${RESET}${CYAN}${SUBDIR_FINAL}${RESET}"
+                    line_output+="${sep}${DIR_ICON}${CYAN}${PROJECT_NAME}${RESET}"
                 fi
-            else
-                OUTPUT+="${SEPARATOR}${DIR_ICON}${CYAN}${PROJECT_NAME}${RESET}"
+                sep=" ${DIM}·${RESET} "
+                ;;
+            model)
+                line_output+="${sep}${MAGENTA}${MODEL}${RESET}"
+                sep=" ${DIM}·${RESET} "
+                ;;
+            context)
+                line_output+="${sep}${CONTEXT_BAR}"
+                sep=" ${DIM}·${RESET} "
+                ;;
+            linesChanged)
+                line_output+="${sep}${GREEN}+${LINES_ADDED}${RESET} ${RED}-${LINES_REMOVED}${RESET}"
+                sep=" ${DIM}·${RESET} "
+                ;;
+            cost)
+                line_output+="${sep}${GRAY}\$${COST}${RESET}"
+                sep=" ${DIM}·${RESET} "
+                ;;
+            git)
+                if [ -n "$GIT_INFO" ]; then
+                    line_output+="${sep}${YELLOW}${GIT_INFO}${RESET}"
+                    sep=" ${DIM}·${RESET} "
+                fi
+                ;;
+            devices)
+                # Show connected devices (versions shown if packages/bundleIds configured)
+                if [ -n "$DEVICE_INFO" ]; then
+                    line_output+="${sep}${BLUE}${DEVICE_INFO}${RESET}"
+                    sep=" ${DIM}·${RESET} "
+                fi
+                ;;
+            gradle)
+                if [ -n "$GRADLE_STATUS" ]; then
+                    line_output+="${sep}${GREEN}${GRADLE_STATUS}${RESET}"
+                    sep=" ${DIM}·${RESET} "
+                fi
+                ;;
+            xcode)
+                if [ -n "$XCODE_STATUS" ]; then
+                    line_output+="${sep}${CYAN}${XCODE_STATUS}${RESET}"
+                    sep=" ${DIM}·${RESET} "
+                fi
+                ;;
+            mcp)
+                if [ -n "$MCP_STATUS" ]; then
+                    line_output+="${sep}${GRAY}${MCP_STATUS}${RESET}"
+                    sep=" ${DIM}·${RESET} "
+                fi
+                ;;
+        esac
+    done
+
+    echo "$line_output"
+}
+
+# Build output based on single or multi-line config
+if [ "$IS_MULTILINE" = "true" ]; then
+    # Multi-line: sections is array of arrays
+    LINE_COUNT=$(echo "$SECTIONS_JSON" | jq -r 'length' 2>/dev/null)
+    for ((i=0; i<LINE_COUNT; i++)); do
+        SECTIONS_FOR_LINE=$(echo "$SECTIONS_JSON" | jq -r ".[$i][]" 2>/dev/null)
+        LINE_OUTPUT=$(build_line "$SECTIONS_FOR_LINE")
+        if [ -n "$LINE_OUTPUT" ]; then
+            if [ -n "$OUTPUT" ]; then
+                OUTPUT+="\n"
             fi
-            SEPARATOR=" ${DIM}·${RESET} "
-            ;;
-        model)
-            OUTPUT+="${SEPARATOR}${MAGENTA}${MODEL}${RESET}"
-            SEPARATOR=" ${DIM}·${RESET} "
-            ;;
-        context)
-            OUTPUT+="${SEPARATOR}${CONTEXT_BAR}"
-            SEPARATOR=" ${DIM}·${RESET} "
-            ;;
-        linesChanged)
-            OUTPUT+="${SEPARATOR}${GREEN}+${LINES_ADDED}${RESET} ${RED}-${LINES_REMOVED}${RESET}"
-            SEPARATOR=" ${DIM}·${RESET} "
-            ;;
-        cost)
-            OUTPUT+="${SEPARATOR}${GRAY}\$${COST}${RESET}"
-            SEPARATOR=" ${DIM}·${RESET} "
-            ;;
-        git)
-            if [ -n "$GIT_INFO" ]; then
-                OUTPUT+="${SEPARATOR}${YELLOW}${GIT_INFO}${RESET}"
-                SEPARATOR=" ${DIM}·${RESET} "
-            fi
-            ;;
-        devices)
-            # Only show if android.packages is explicitly configured with values
-            local packages_json=$(config_get '.android.packages' '[]')
-            local pkg_count=$(echo "$packages_json" | jq -r 'length' 2>/dev/null)
-            if [ "$pkg_count" != "0" ] && [ -n "$DEVICE_INFO" ]; then
-                # Devices go on a new line
-                OUTPUT+="\n${BLUE}${DEVICE_INFO}${RESET}"
-                SEPARATOR=" ${DIM}·${RESET} "
-            fi
-            ;;
-        gradle)
-            if [ -n "$GRADLE_STATUS" ]; then
-                OUTPUT+="${SEPARATOR}${GREEN}${GRADLE_STATUS}${RESET}"
-                SEPARATOR=" ${DIM}·${RESET} "
-            fi
-            ;;
-        xcode)
-            if [ -n "$XCODE_STATUS" ]; then
-                OUTPUT+="${SEPARATOR}${CYAN}${XCODE_STATUS}${RESET}"
-                SEPARATOR=" ${DIM}·${RESET} "
-            fi
-            ;;
-        mcp)
-            if [ -n "$MCP_STATUS" ]; then
-                OUTPUT+="${SEPARATOR}${GRAY}${MCP_STATUS}${RESET}"
-                SEPARATOR=" ${DIM}·${RESET} "
-            fi
-            ;;
-    esac
-done
+            OUTPUT+="$LINE_OUTPUT"
+        fi
+    done
+else
+    # Single line: sections is flat array
+    SECTIONS=$(echo "$SECTIONS_JSON" | jq -r '.[]' 2>/dev/null)
+    OUTPUT=$(build_line "$SECTIONS")
+fi
 
 echo -e "$OUTPUT"

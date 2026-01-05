@@ -1,5 +1,8 @@
 # User-specific Claude settings
 .claude/
 
+# Local config overrides (not committed)
+.claude-statusline.local.json
+
 # Cache files
 /tmp/
