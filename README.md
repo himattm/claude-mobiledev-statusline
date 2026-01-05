@@ -186,6 +186,9 @@ The directory section shows where Claude was started, with smart handling when y
 **Config changes not showing**
 - Config is cached per-session. Start new session or: `rm /tmp/claude-statusline-config-*`
 
+**Git info seems stale**
+- Git branch/status and diff stats are cached for 2 seconds to avoid blocking other git operations
+
 **Context % doesn't match /context**
 - Adjust `SYSTEM_OVERHEAD_TOKENS` in script (default: 23000)
 
