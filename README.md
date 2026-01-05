@@ -8,7 +8,7 @@ A custom status line for [Claude Code](https://claude.ai/claude-code) optimized 
 
 ```
 ⌸ my-app · Opus 4.5 · [████████▒▒] 81% · +658 -210 · $15.14 · main*+ · 𓃰3 · ⚒ · mcp:2
-⬢ emulator-5560:6.89 · ⬡ emulator-5562:6.89 ·  iPhone 15:6.89
+⬢ emulator-5560:6.89 · ⬡ emulator-5562:6.89 ·   iPhone 15:6.89
 ```
 
 ## Quick Start
@@ -102,7 +102,7 @@ Note: `devices` appears on a new line when shown.
 | **Code Stats** | Lines added/removed (`+658 -210`) and session cost (`$15.14`) |
 | **Git** | Branch with dirty indicators (`*` staged, `**` unstaged, `+` untracked) |
 | **Android** | Device list with app versions, `⬢` targeted / `⬡` non-targeted |
-| **iOS** | Simulator list with app versions, Apple logo icon |
+| **iOS** | Simulator list with app versions,  Apple logo icon |
 | **Gradle** | `𓃰3` daemons running, `𓃰?` cold start expected |
 | **Xcode** | `⚒2` builds running |
 | **MCP** | `mcp:2` servers configured |
@@ -130,23 +130,10 @@ The directory section shows where Claude was started, with smart handling when y
 |--------|---------|
 | `⬢` | Android device (targeted via ANDROID_SERIAL) |
 | `⬡` | Android device (not targeted) |
-| `` | iOS simulator (Apple logo) |
+| `` | iOS simulator (Apple logo) |
 | `𓃰` | Gradle daemon |
 | `⚒` | Xcode build |
 | `█░▒` | Context: used, free, buffer |
-
-### Colors
-
-| Color | Used For |
-|-------|----------|
-| Cyan | Directory (current), Xcode |
-| Dim Cyan | Directory (project root when in subdir) |
-| Magenta | Model name |
-| Green | Lines added, Gradle |
-| Gray | Cost, MCP |
-| Red | Lines removed, context 78%+ |
-| Yellow | Git branch, context 50-78% |
-| Blue | Devices |
 
 ### Troubleshooting
 
