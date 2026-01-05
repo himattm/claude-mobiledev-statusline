@@ -240,18 +240,18 @@ get_context_bar() {
 
 # Function to get git info with register branch indicator
 get_git_info() {
-    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+    if ! timeout 1 git rev-parse --git-dir > /dev/null 2>&1; then
         echo ""
         return
     fi
 
-    BRANCH=$(git branch --show-current 2>/dev/null)
+    BRANCH=$(timeout 1 git branch --show-current 2>/dev/null)
     if [ -z "$BRANCH" ]; then
-        BRANCH=$(git rev-parse --short HEAD 2>/dev/null)
+        BRANCH=$(timeout 1 git rev-parse --short HEAD 2>/dev/null)
     fi
 
-    # Use git status --porcelain for efficiency (single command)
-    STATUS=$(git status --porcelain 2>/dev/null | head -20)
+    # Use git status --porcelain for efficiency (single command, with timeout)
+    STATUS=$(timeout 1 git status --porcelain 2>/dev/null | head -20)
     DIRTY=""
     if echo "$STATUS" | grep -q "^[MADRC]"; then
         DIRTY="*"  # staged changes
@@ -268,7 +268,7 @@ get_git_info() {
 
 # Function to get git diff stats (lines added/removed since last commit)
 get_git_diff_stats() {
-    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+    if ! timeout 1 git rev-parse --git-dir > /dev/null 2>&1; then
         echo "0 0"
         return
     fi
