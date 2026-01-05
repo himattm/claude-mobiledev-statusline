@@ -1,0 +1,5 @@
+# User-specific Claude settings
+.claude/
+
+# Cache files
+/tmp/
