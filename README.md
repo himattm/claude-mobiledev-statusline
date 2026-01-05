@@ -141,7 +141,7 @@ A complete `.claude-statusline.json` with all available options:
 |---------|-------------|
 | **Smart Directory** | Shows project root at start, abbreviates when in subdirs: `cms/screenshots` |
 | **Context Bar** | Visual `[████░░▒▒]` showing usage, free space, and auto-compact buffer zone |
-| **Code Stats** | Lines added/removed (`+658 -210`) and session cost (`$15.14`) |
+| **Code Stats** | Uncommitted lines changed via git diff (`+658 -210`) and session cost (`$15.14`) |
 | **Git** | Branch with dirty indicators (`*` staged, `**` unstaged, `+` untracked) |
 | **Android** | Device list with app versions, `⬢` targeted / `⬡` non-targeted |
 | **iOS** | Simulator list with app versions,  Apple logo icon |

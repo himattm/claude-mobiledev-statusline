@@ -266,6 +266,18 @@ get_git_info() {
     echo "${BRANCH}${DIRTY}"
 }
 
+# Function to get git diff stats (lines added/removed since last commit)
+get_git_diff_stats() {
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        echo "0 0"
+        return
+    fi
+
+    # Get stats for both staged and unstaged changes (with timeout to avoid blocking)
+    local stats=$(timeout 1 git diff --numstat HEAD 2>/dev/null | awk '{add+=$1; del+=$2} END {print add+0, del+0}')
+    echo "${stats:-0 0}"
+}
+
 # Get version for a specific package
 get_package_version() {
     local serial=$1
@@ -606,6 +618,9 @@ get_mcp_status() {
 # Get all dynamic info
 CONTEXT_BAR=$(get_context_bar "$PCT")
 GIT_INFO=$(get_git_info)
+GIT_DIFF_STATS=$(get_git_diff_stats)
+GIT_LINES_ADDED=$(echo "$GIT_DIFF_STATS" | awk '{print $1}')
+GIT_LINES_REMOVED=$(echo "$GIT_DIFF_STATS" | awk '{print $2}')
 DEVICE_INFO=$(get_device_info)
 GRADLE_STATUS=$(get_gradle_status)
 XCODE_STATUS=$(get_xcode_status)
@@ -664,7 +679,8 @@ build_line() {
                 sep=" ${DIM}·${RESET} "
                 ;;
             linesChanged)
-                line_output+="${sep}${GREEN}+${LINES_ADDED}${RESET} ${RED}-${LINES_REMOVED}${RESET}"
+                # Use git diff stats (net change since last commit) instead of session totals
+                line_output+="${sep}${GREEN}+${GIT_LINES_ADDED}${RESET} ${RED}-${GIT_LINES_REMOVED}${RESET}"
                 sep=" ${DIM}·${RESET} "
                 ;;
             cost)
