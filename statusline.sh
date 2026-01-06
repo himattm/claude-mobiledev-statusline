@@ -33,6 +33,7 @@ APP_VERSION_CACHE_MAX_AGE=30  # seconds
 GIT_INFO_CACHE="/tmp/claude-statusline-git-info"
 GIT_DIFF_CACHE="/tmp/claude-statusline-git-diff"
 GIT_CACHE_MAX_AGE=2  # seconds
+GIT_LOCK_FILE="/tmp/claude-statusline-git.lock"
 
 
 # Default section order (gradle/xcode before devices since devices go on new line)
@@ -282,9 +283,16 @@ get_git_info() {
         fi
     fi
 
-    local info=$(get_git_info_uncached)
-    echo "$info" > "$cache_file"
-    echo "$info"
+    # Use flock to prevent concurrent git access across instances
+    # Non-blocking (-n) so we don't hang - just return cached/empty if can't get lock
+    (
+        if flock -n 200 2>/dev/null; then
+            local info=$(get_git_info_uncached)
+            echo "$info" > "$cache_file"
+        fi
+    ) 200>"$GIT_LOCK_FILE"
+
+    cat "$cache_file" 2>/dev/null
 }
 
 # Function to get git diff stats (lines added/removed since last commit, cached)
@@ -310,9 +318,16 @@ get_git_diff_stats() {
         fi
     fi
 
-    local stats=$(get_git_diff_stats_uncached)
-    echo "$stats" > "$cache_file"
-    echo "$stats"
+    # Use flock to prevent concurrent git access across instances
+    # Non-blocking (-n) so we don't hang - just return cached/empty if can't get lock
+    (
+        if flock -n 200 2>/dev/null; then
+            local stats=$(get_git_diff_stats_uncached)
+            echo "$stats" > "$cache_file"
+        fi
+    ) 200>"$GIT_LOCK_FILE"
+
+    cat "$cache_file" 2>/dev/null || echo "0 0"
 }
 
 # Get version for a specific package
