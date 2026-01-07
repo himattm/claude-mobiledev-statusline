@@ -53,7 +53,7 @@ run_test() {
 
 test_cli_help() {
     local output=$("$PRISM" help 2>&1)
-    if echo "$output" | grep -q "Prism - A fast, customizable status line"; then
+    if echo "$output" | grep -q "A fast, customizable status line"; then
         pass "CLI: help shows description"
     else
         fail "CLI: help shows description" "Got: $output"
@@ -83,6 +83,29 @@ test_cli_help_flags() {
     fi
 }
 
+test_cli_version() {
+    local output=$("$PRISM" version 2>&1)
+    if echo "$output" | grep -q "Prism [0-9]"; then
+        pass "CLI: version shows version number"
+    else
+        fail "CLI: version shows version number" "Got: $output"
+    fi
+
+    local output2=$("$PRISM" --version 2>&1)
+    if echo "$output2" | grep -q "Prism [0-9]"; then
+        pass "CLI: --version works"
+    else
+        fail "CLI: --version works"
+    fi
+
+    local output3=$("$PRISM" -v 2>&1)
+    if echo "$output3" | grep -q "Prism [0-9]"; then
+        pass "CLI: -v works"
+    else
+        fail "CLI: -v works"
+    fi
+}
+
 test_cli_unknown_command() {
     local output=$("$PRISM" foobar 2>&1) || true
     if echo "$output" | grep -q "Unknown command"; then
@@ -94,23 +117,23 @@ test_cli_unknown_command() {
 
 test_cli_init() {
     cd "$TEST_DIR"
-    rm -f .prism.json
+    rm -rf .claude
 
     local output=$("$PRISM" init 2>&1)
 
-    if [ -f ".prism.json" ]; then
-        pass "CLI: init creates .prism.json"
+    if [ -f ".claude/prism.json" ]; then
+        pass "CLI: init creates .claude/prism.json"
     else
-        fail "CLI: init creates .prism.json"
+        fail "CLI: init creates .claude/prism.json"
     fi
 
-    if grep -q '"icon"' .prism.json; then
+    if grep -q '"icon"' .claude/prism.json; then
         pass "CLI: init includes icon in config"
     else
         fail "CLI: init includes icon in config"
     fi
 
-    if grep -q '"sections"' .prism.json; then
+    if grep -q '"sections"' .claude/prism.json; then
         pass "CLI: init includes sections in config"
     else
         fail "CLI: init includes sections in config"
@@ -119,7 +142,8 @@ test_cli_init() {
 
 test_cli_init_no_overwrite() {
     cd "$TEST_DIR"
-    echo '{"existing": true}' > .prism.json
+    mkdir -p .claude
+    echo '{"existing": true}' > .claude/prism.json
 
     local output=$("$PRISM" init 2>&1) || true
 
@@ -129,7 +153,7 @@ test_cli_init_no_overwrite() {
         fail "CLI: init refuses to overwrite existing config"
     fi
 
-    if grep -q '"existing"' .prism.json; then
+    if grep -q '"existing"' .claude/prism.json; then
         pass "CLI: init preserves existing config"
     else
         fail "CLI: init preserves existing config"
@@ -186,13 +210,13 @@ test_config_global_only() {
 test_config_repo_overrides_global() {
     local test_home="$TEST_DIR/config_test2"
     local test_project="$test_home/project"
-    mkdir -p "$test_home/.claude" "$test_project"
+    mkdir -p "$test_home/.claude" "$test_project/.claude"
 
     # Create global config
     echo '{"icon": "🌍"}' > "$test_home/.claude/prism-config.json"
 
     # Create repo config that overrides
-    echo '{"icon": "🚀"}' > "$test_project/.prism.json"
+    echo '{"icon": "🚀"}' > "$test_project/.claude/prism.json"
 
     local input='{"session_id":"test2","workspace":{"project_dir":"'"$test_project"'","current_dir":"'"$test_project"'"},"model":{"display_name":"Test"},"context_window":{"context_window_size":200000,"current_usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"cost":{"total_cost_usd":0.01}}'
 
@@ -210,12 +234,12 @@ test_config_repo_overrides_global() {
 test_config_local_overrides_repo() {
     local test_home="$TEST_DIR/config_test3"
     local test_project="$test_home/project"
-    mkdir -p "$test_home/.claude" "$test_project"
+    mkdir -p "$test_home/.claude" "$test_project/.claude"
 
     # Create all three tiers
     echo '{"icon": "🌍"}' > "$test_home/.claude/prism-config.json"
-    echo '{"icon": "🚀"}' > "$test_project/.prism.json"
-    echo '{"icon": "🔧"}' > "$test_project/.prism.local.json"
+    echo '{"icon": "🚀"}' > "$test_project/.claude/prism.json"
+    echo '{"icon": "🔧"}' > "$test_project/.claude/prism.local.json"
 
     local input='{"session_id":"test3","workspace":{"project_dir":"'"$test_project"'","current_dir":"'"$test_project"'"},"model":{"display_name":"Test"},"context_window":{"context_window_size":200000,"current_usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"cost":{"total_cost_usd":0.01}}'
 
@@ -314,6 +338,7 @@ echo ""
 echo "CLI Tests:"
 run_test test_cli_help
 run_test test_cli_help_flags
+run_test test_cli_version
 run_test test_cli_unknown_command
 run_test test_cli_init
 run_test test_cli_init_no_overwrite

@@ -2,22 +2,25 @@
 # Prism - A fast, customizable status line for Claude Code
 # https://github.com/himattm/prism
 
+VERSION="0.1.0"
+
 # CLI mode: handle commands when run directly (not as status line)
 if [ -n "$1" ]; then
     case "$1" in
         init)
-            if [ -f ".prism.json" ]; then
-                echo "Error: .prism.json already exists"
+            mkdir -p .claude
+            if [ -f ".claude/prism.json" ]; then
+                echo "Error: .claude/prism.json already exists"
                 exit 1
             fi
-            cat > .prism.json << 'EOF'
+            cat > .claude/prism.json << 'EOF'
 {
   "icon": "💎",
   "sections": ["dir", "model", "context", "cost", "git"]
 }
 EOF
-            echo "Created .prism.json"
-            echo "Tip: Add '.prism.local.json' to .gitignore for personal overrides"
+            echo "Created .claude/prism.json"
+            echo "Tip: Create .claude/prism.local.json for personal overrides (gitignored)"
             ;;
         init-global)
             mkdir -p ~/.claude
@@ -32,17 +35,21 @@ EOF
 EOF
             echo "Created ~/.claude/prism-config.json"
             ;;
+        version|--version|-v)
+            echo "Prism $VERSION"
+            ;;
         help|--help|-h)
-            echo "Prism - A fast, customizable status line for Claude Code"
+            echo "Prism $VERSION - A fast, customizable status line for Claude Code"
             echo ""
             echo "Usage:"
-            echo "  prism init         Create .prism.json in current directory"
+            echo "  prism init         Create .claude/prism.json in current directory"
             echo "  prism init-global  Create ~/.claude/prism-config.json"
+            echo "  prism version      Show version"
             echo "  prism help         Show this help"
             echo ""
             echo "Config precedence (highest to lowest):"
-            echo "  1. .prism.local.json      Your personal overrides (gitignored)"
-            echo "  2. .prism.json            Repo config (commit for your team)"
+            echo "  1. .claude/prism.local.json  Your personal overrides (gitignored)"
+            echo "  2. .claude/prism.json        Repo config (commit for your team)"
             echo "  3. ~/.claude/prism-config.json  Global defaults"
             ;;
         *)
@@ -91,7 +98,7 @@ GIT_CACHE_MAX_AGE=2  # seconds
 # Default section order (gradle/xcode before devices since devices go on new line)
 DEFAULT_SECTIONS='["dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp", "devices"]'
 
-# Load config from .prism.json (cached per session)
+# Load config from .claude/prism.json (cached per session)
 # Precedence: local override > per-repo config > global config > defaults
 get_config() {
     local cache_key=$(echo "$PROJECT_DIR" | md5 -q)
@@ -110,9 +117,9 @@ get_config() {
         global_config=$(cat "$HOME/.claude/prism-config.json")
     fi
 
-    # Per-repo overrides global
-    if [ -f "${PROJECT_DIR}/.prism.json" ]; then
-        local repo_config=$(cat "${PROJECT_DIR}/.prism.json")
+    # Per-repo overrides global (check .claude/prism.json)
+    if [ -f "${PROJECT_DIR}/.claude/prism.json" ]; then
+        local repo_config=$(cat "${PROJECT_DIR}/.claude/prism.json")
         # Merge: repo config takes precedence
         config=$(echo "$global_config $repo_config" | jq -s '.[0] * .[1]')
     elif [ -f "${PROJECT_DIR}/.claude-icon" ]; then
@@ -124,8 +131,8 @@ get_config() {
     fi
 
     # Local override takes highest precedence (not committed to git)
-    if [ -f "${PROJECT_DIR}/.prism.local.json" ]; then
-        local local_config=$(cat "${PROJECT_DIR}/.prism.local.json")
+    if [ -f "${PROJECT_DIR}/.claude/prism.local.json" ]; then
+        local local_config=$(cat "${PROJECT_DIR}/.claude/prism.local.json")
         config=$(echo "$config $local_config" | jq -s '.[0] * .[1]')
     fi
 

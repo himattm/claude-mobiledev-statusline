@@ -1,8 +1,5 @@
-# User-specific Claude settings
-.claude/
-
 # Local config overrides (not committed)
-.prism.local.json
+.claude/prism.local.json
 
 # Cache files
 /tmp/

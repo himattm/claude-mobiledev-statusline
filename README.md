@@ -54,12 +54,12 @@ Copy one of these prompts into Claude Code:
 
 **Full installation:**
 ```
-Install Prism from https://github.com/himattm/prism - run the install script and configure a .prism.json for this repo with an icon of my choice.
+Install Prism from https://github.com/himattm/prism - run the install script and configure a .claude/prism.json for this repo with an icon of my choice.
 ```
 
 **Per-repo setup only:**
 ```
-Create a .prism.json for this repo. Suggest some icon options for me to choose from, then configure my Android package name and iOS bundle ID.
+Create a .claude/prism.json for this repo. Suggest some icon options for me to choose from, then configure my Android package name and iOS bundle ID.
 ```
 
 ## Configuration
@@ -67,9 +67,9 @@ Create a .prism.json for this repo. Suggest some icon options for me to choose f
 Prism uses a 3-tier config system. Higher tiers override lower tiers:
 
 ```
-.prism.local.json              ← Your personal overrides (gitignored)
+.claude/prism.local.json       ← Your personal overrides (gitignored)
        ↓ overrides
-.prism.json                    ← Repo config (commit for your team)
+.claude/prism.json             ← Repo config (commit for your team)
        ↓ overrides
 ~/.claude/prism-config.json    ← Your global defaults
 ```
@@ -91,8 +91,8 @@ Or copy from [examples/](examples/).
 | Tier | File | Commit? | Use for |
 |------|------|---------|---------|
 | **Global** | `~/.claude/prism-config.json` | No | Your default sections, personal preferences |
-| **Repo** | `.prism.json` | Yes | Team icon, package names, shared settings |
-| **Local** | `.prism.local.json` | No | Personal icon override, machine-specific tweaks |
+| **Repo** | `.claude/prism.json` | Yes | Team icon, package names, shared settings |
+| **Local** | `.claude/prism.local.json` | No | Personal icon override, machine-specific tweaks |
 
 ### Global Config
 
@@ -122,7 +122,7 @@ Shared team settings. Create with `prism.sh init`:
 
 ### Local Overrides
 
-Personal tweaks not committed to git. Add `.prism.local.json` to your `.gitignore`:
+Personal tweaks not committed to git. Add `.claude/prism.local.json` to your `.gitignore`:
 
 ```json
 {
@@ -144,7 +144,7 @@ Available: `dir`, `model`, `context`, `linesChanged`, `cost`, `git`, `gradle`, `
 
 ### Full Example Config
 
-A complete `.prism.json` with all available options:
+A complete `.claude/prism.json` with all available options:
 
 ```json
 {
