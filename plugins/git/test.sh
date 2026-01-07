@@ -265,6 +265,139 @@ test_clean_working_tree() {
     fi
 }
 
+test_behind_upstream_indicator() {
+    local repo_dir="$TEST_DIR/behind_test"
+    local remote_dir="$TEST_DIR/behind_remote"
+
+    # Create a bare "remote" repo
+    mkdir -p "$remote_dir"
+    cd "$remote_dir"
+    git init --bare > /dev/null 2>&1
+
+    # Create local repo and push to remote
+    create_test_repo "$repo_dir"
+    cd "$repo_dir"
+    git remote add origin "$remote_dir"
+    git push -u origin main > /dev/null 2>&1
+
+    # Add a commit to the remote (simulating someone else pushing)
+    local clone_dir="$TEST_DIR/behind_clone"
+    git clone "$remote_dir" "$clone_dir" > /dev/null 2>&1
+    cd "$clone_dir"
+    git config user.email "test@test.com"
+    git config user.name "Test User"
+    echo "remote change" > remote.txt
+    git add remote.txt
+    git commit -m "Remote commit" > /dev/null 2>&1
+    git push > /dev/null 2>&1
+
+    # Fetch in original repo (but don't pull)
+    cd "$repo_dir"
+    git fetch > /dev/null 2>&1
+
+    clear_git_cache "$repo_dir"
+
+    local output=$(build_plugin_input "$repo_dir" | "$PLUGIN" 2>&1)
+
+    if echo "$output" | grep -q '⇣'; then
+        pass "Git: behind upstream indicator (⇣) appears"
+    else
+        fail "Git: behind upstream indicator (⇣) appears" "Got: '$output'"
+    fi
+}
+
+test_ahead_upstream_indicator() {
+    local repo_dir="$TEST_DIR/ahead_test"
+    local remote_dir="$TEST_DIR/ahead_remote"
+
+    # Create a bare "remote" repo
+    mkdir -p "$remote_dir"
+    cd "$remote_dir"
+    git init --bare > /dev/null 2>&1
+
+    # Create local repo and push to remote
+    create_test_repo "$repo_dir"
+    cd "$repo_dir"
+    git remote add origin "$remote_dir"
+    git push -u origin main > /dev/null 2>&1
+
+    # Add a local commit (not pushed)
+    echo "local change" > local.txt
+    git add local.txt
+    git commit -m "Local commit" > /dev/null 2>&1
+
+    clear_git_cache "$repo_dir"
+
+    local output=$(build_plugin_input "$repo_dir" | "$PLUGIN" 2>&1)
+
+    if echo "$output" | grep -q '⇡'; then
+        pass "Git: ahead of upstream indicator (⇡) appears"
+    else
+        fail "Git: ahead of upstream indicator (⇡) appears" "Got: '$output'"
+    fi
+}
+
+test_diverged_upstream_indicators() {
+    local repo_dir="$TEST_DIR/diverged_test"
+    local remote_dir="$TEST_DIR/diverged_remote"
+
+    # Create a bare "remote" repo
+    mkdir -p "$remote_dir"
+    cd "$remote_dir"
+    git init --bare > /dev/null 2>&1
+
+    # Create local repo and push to remote
+    create_test_repo "$repo_dir"
+    cd "$repo_dir"
+    git remote add origin "$remote_dir"
+    git push -u origin main > /dev/null 2>&1
+
+    # Add a commit to the remote (simulating someone else pushing)
+    local clone_dir="$TEST_DIR/diverged_clone"
+    git clone "$remote_dir" "$clone_dir" > /dev/null 2>&1
+    cd "$clone_dir"
+    git config user.email "test@test.com"
+    git config user.name "Test User"
+    echo "remote change" > remote.txt
+    git add remote.txt
+    git commit -m "Remote commit" > /dev/null 2>&1
+    git push > /dev/null 2>&1
+
+    # Add a local commit (not pushed) and fetch remote
+    cd "$repo_dir"
+    echo "local change" > local.txt
+    git add local.txt
+    git commit -m "Local commit" > /dev/null 2>&1
+    git fetch > /dev/null 2>&1
+
+    clear_git_cache "$repo_dir"
+
+    local output=$(build_plugin_input "$repo_dir" | "$PLUGIN" 2>&1)
+
+    # Should have both arrows for diverged state
+    if echo "$output" | grep -q '⇣' && echo "$output" | grep -q '⇡'; then
+        pass "Git: diverged indicators (⇣⇡) appear"
+    else
+        fail "Git: diverged indicators (⇣⇡) appear" "Got: '$output'"
+    fi
+}
+
+test_no_upstream_no_arrows() {
+    local repo_dir="$TEST_DIR/no_upstream_test"
+    create_test_repo "$repo_dir"
+    clear_git_cache "$repo_dir"
+
+    # Repo has no remote/upstream configured
+    local output=$(build_plugin_input "$repo_dir" | "$PLUGIN" 2>&1)
+
+    # Should just be "main" with no arrows
+    if ! echo "$output" | grep -q '⇣' && ! echo "$output" | grep -q '⇡'; then
+        pass "Git: no upstream shows no arrows"
+    else
+        fail "Git: no upstream shows no arrows" "Got: '$output'"
+    fi
+}
+
 # =============================================================================
 # Run All Tests
 # =============================================================================
@@ -297,6 +430,13 @@ run_test test_combined_indicators
 run_test test_detached_head
 run_test test_non_git_directory
 run_test test_clean_working_tree
+
+echo ""
+echo "Upstream Tracking Tests:"
+run_test test_behind_upstream_indicator
+run_test test_ahead_upstream_indicator
+run_test test_diverged_upstream_indicators
+run_test test_no_upstream_no_arrows
 
 echo ""
 echo "====================="

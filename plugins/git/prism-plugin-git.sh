@@ -2,8 +2,8 @@
 # Prism Plugin: Git
 # Shows git branch and dirty status indicators
 #
-# Output: branch_name with indicators (* staged, ** unstaged, + untracked)
-# Example: main*+
+# Output: branch_name with indicators (* staged, ** unstaged, + untracked, ⇣ behind, ⇡ ahead)
+# Example: main*+⇣⇡
 
 set -e
 
@@ -46,7 +46,18 @@ get_git_info_uncached() {
         dirty="${dirty}+"  # untracked
     fi
 
-    echo "${branch}${dirty}"
+    # Check ahead/behind upstream
+    local arrows=""
+    local behind=$(timeout 1 git rev-list --count HEAD..@{upstream} 2>/dev/null || echo "0")
+    local ahead=$(timeout 1 git rev-list --count @{upstream}..HEAD 2>/dev/null || echo "0")
+    if [ "$behind" -gt 0 ] 2>/dev/null; then
+        arrows="⇣"  # commits to pull
+    fi
+    if [ "$ahead" -gt 0 ] 2>/dev/null; then
+        arrows="${arrows}⇡"  # commits to push
+    fi
+
+    echo "${branch}${dirty}${arrows}"
 }
 
 # Check cache

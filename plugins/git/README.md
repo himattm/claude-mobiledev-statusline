@@ -15,6 +15,8 @@ branch_name[status_indicators]
 | `*` | Staged changes (ready to commit) |
 | `**` | Staged + unstaged changes |
 | `+` | Untracked files |
+| `⇣` | Behind upstream (commits to pull) |
+| `⇡` | Ahead of upstream (commits to push) |
 
 ## Examples
 
@@ -25,6 +27,10 @@ branch_name[status_indicators]
 | `main**` | Staged and unstaged changes |
 | `main+` | Untracked files only |
 | `main**+` | All three: staged, unstaged, untracked |
+| `main⇣` | Behind upstream, need to pull |
+| `main⇡` | Ahead of upstream, need to push |
+| `main⇣⇡` | Diverged from upstream |
+| `main**+⇣⇡` | All indicators |
 | `abc123` | Detached HEAD (short commit hash) |
 
 ## Behavior
