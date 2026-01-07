@@ -327,6 +327,98 @@ test_output_project_name() {
 }
 
 # =============================================================================
+# Plugin Tests
+# =============================================================================
+
+test_cli_plugins() {
+    # Create a test plugin
+    local plugin_dir="$TEST_DIR/plugin_test/.claude/prism-plugins"
+    mkdir -p "$plugin_dir"
+    cat > "$plugin_dir/prism-plugin-test.sh" << 'EOF'
+#!/bin/bash
+INPUT=$(cat)
+echo "test-output"
+EOF
+    chmod +x "$plugin_dir/prism-plugin-test.sh"
+
+    cd "$TEST_DIR/plugin_test"
+    local output=$("$PRISM" plugins 2>&1)
+
+    if echo "$output" | grep -q "test"; then
+        pass "CLI: plugins lists discovered plugins"
+    else
+        fail "CLI: plugins lists discovered plugins" "Output: $output"
+    fi
+
+    if echo "$output" | grep -q "Plugin directories"; then
+        pass "CLI: plugins shows directory info"
+    else
+        fail "CLI: plugins shows directory info"
+    fi
+}
+
+test_cli_test_plugin() {
+    # Create a test plugin
+    local plugin_dir="$TEST_DIR/test_plugin_test/.claude/prism-plugins"
+    mkdir -p "$plugin_dir"
+    cat > "$plugin_dir/prism-plugin-hello.sh" << 'EOF'
+#!/bin/bash
+INPUT=$(cat)
+CYAN=$(echo "$INPUT" | jq -r '.colors.cyan')
+RESET=$(echo "$INPUT" | jq -r '.colors.reset')
+echo -e "${CYAN}hello${RESET}"
+EOF
+    chmod +x "$plugin_dir/prism-plugin-hello.sh"
+
+    cd "$TEST_DIR/test_plugin_test"
+    local output=$("$PRISM" test-plugin hello . 2>&1)
+
+    if echo "$output" | grep -q "hello"; then
+        pass "CLI: test-plugin runs plugin and shows output"
+    else
+        fail "CLI: test-plugin runs plugin and shows output" "Output: $output"
+    fi
+
+    if echo "$output" | grep -q "Exit code: 0"; then
+        pass "CLI: test-plugin shows exit code"
+    else
+        fail "CLI: test-plugin shows exit code"
+    fi
+}
+
+test_plugin_in_status_line() {
+    # Create a test plugin that outputs a marker
+    local test_home="$TEST_DIR/plugin_output_test"
+    local test_project="$test_home/project"
+    mkdir -p "$test_project/.claude/prism-plugins"
+    mkdir -p "$test_home/.claude"
+
+    # Create a simple plugin
+    cat > "$test_project/.claude/prism-plugins/prism-plugin-marker.sh" << 'EOF'
+#!/bin/bash
+INPUT=$(cat)
+echo "PLUGIN_MARKER"
+EOF
+    chmod +x "$test_project/.claude/prism-plugins/prism-plugin-marker.sh"
+
+    # Create config that uses the plugin
+    echo '{"sections": ["dir", "marker"]}' > "$test_project/.claude/prism.json"
+
+    # Clear caches
+    rm -f /tmp/prism-config-* /tmp/prism-plugins-*
+
+    local input='{"session_id":"plugin-test","workspace":{"project_dir":"'"$test_project"'","current_dir":"'"$test_project"'"},"model":{"display_name":"Test"},"context_window":{"context_window_size":200000,"current_usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"cost":{"total_cost_usd":0.01}}'
+
+    local output=$(echo "$input" | HOME="$test_home" "$PRISM" 2>&1)
+
+    if echo "$output" | grep -q "PLUGIN_MARKER"; then
+        pass "Plugin: custom plugin output appears in status line"
+    else
+        fail "Plugin: custom plugin output appears in status line" "Output: $output"
+    fi
+}
+
+# =============================================================================
 # Run All Tests
 # =============================================================================
 
@@ -356,6 +448,12 @@ run_test test_output_contains_model
 run_test test_output_contains_cost
 run_test test_output_contains_context_bar
 run_test test_output_project_name
+
+echo ""
+echo "Plugin Tests:"
+run_test test_cli_plugins
+run_test test_cli_test_plugin
+run_test test_plugin_in_status_line
 
 echo ""
 echo "================"

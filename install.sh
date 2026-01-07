@@ -61,6 +61,18 @@ success "  Downloaded prism.sh"
 success "  Downloaded prism-idle-hook.sh"
 success "  Downloaded prism-busy-hook.sh"
 
+# Download bundled plugins
+info "Downloading plugins..."
+
+PLUGIN_DIR="$CLAUDE_DIR/prism-plugins"
+mkdir -p "$PLUGIN_DIR"
+
+for plugin in git gradle xcode mcp devices; do
+    curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/plugins/prism-plugin-${plugin}.sh" -o "$PLUGIN_DIR/prism-plugin-${plugin}.sh"
+    chmod +x "$PLUGIN_DIR/prism-plugin-${plugin}.sh"
+    success "  Downloaded prism-plugin-${plugin}.sh"
+done
+
 # Update settings.json
 info "Configuring Claude Code settings..."
 

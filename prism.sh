@@ -38,19 +38,132 @@ EOF
         version|--version|-v)
             echo "Prism $VERSION"
             ;;
+        plugins)
+            # List discovered plugins
+            echo "Plugin directories:"
+            echo "  User:    ~/.claude/prism-plugins/"
+            echo "  Project: .claude/prism-plugins/"
+            echo ""
+            echo "Discovered plugins:"
+
+            # Need to set PROJECT_DIR for discovery
+            PROJECT_DIR="${2:-.}"
+            PROJECT_DIR=$(cd "$PROJECT_DIR" 2>/dev/null && pwd)
+
+            # Clear plugin cache to get fresh results
+            rm -f /tmp/prism-plugins-* 2>/dev/null
+
+            found=0
+            for dir in "${PROJECT_DIR}/.claude/prism-plugins" "$HOME/.claude/prism-plugins"; do
+                [ -d "$dir" ] || continue
+                for plugin in "$dir"/prism-plugin-*; do
+                    [ -x "$plugin" ] || continue
+                    basename=$(basename "$plugin")
+                    name="${basename#prism-plugin-}"
+                    name="${name%%.*}"
+                    echo "  $name  ($plugin)"
+                    found=1
+                done
+            done
+
+            if [ "$found" -eq 0 ]; then
+                echo "  (none found)"
+            fi
+            ;;
+        test-plugin)
+            # Test a plugin with sample input
+            plugin_name="$2"
+            if [ -z "$plugin_name" ]; then
+                echo "Usage: prism test-plugin <plugin-name>"
+                echo "Example: prism test-plugin weather"
+                exit 1
+            fi
+
+            PROJECT_DIR="${3:-.}"
+            PROJECT_DIR=$(cd "$PROJECT_DIR" 2>/dev/null && pwd)
+
+            # Find plugin
+            plugin_path=""
+            for dir in "${PROJECT_DIR}/.claude/prism-plugins" "$HOME/.claude/prism-plugins"; do
+                for ext in ".sh" ".py" ""; do
+                    if [ -x "$dir/prism-plugin-${plugin_name}${ext}" ]; then
+                        plugin_path="$dir/prism-plugin-${plugin_name}${ext}"
+                        break 2
+                    fi
+                done
+            done
+
+            if [ -z "$plugin_path" ]; then
+                echo "Plugin not found: $plugin_name"
+                exit 1
+            fi
+
+            echo "Testing plugin: $plugin_path"
+            echo ""
+
+            # Build sample input
+            sample_input=$(cat << EOF
+{
+  "prism": {
+    "version": "$VERSION",
+    "project_dir": "$PROJECT_DIR",
+    "current_dir": "$PROJECT_DIR",
+    "session_id": "test-session",
+    "is_idle": true
+  },
+  "session": {
+    "model": "Test Model",
+    "context_pct": 50,
+    "cost_usd": 1.23,
+    "lines_added": 100,
+    "lines_removed": 50
+  },
+  "config": {
+    "$plugin_name": {}
+  },
+  "colors": {
+    "cyan": "\u001b[36m",
+    "green": "\u001b[32m",
+    "yellow": "\u001b[33m",
+    "red": "\u001b[31m",
+    "magenta": "\u001b[35m",
+    "blue": "\u001b[34m",
+    "gray": "\u001b[90m",
+    "dim": "\u001b[2m",
+    "reset": "\u001b[0m"
+  }
+}
+EOF
+)
+            echo "Input JSON:"
+            echo "$sample_input" | jq .
+            echo ""
+            echo "Output:"
+            output=$(echo "$sample_input" | timeout 2 "$plugin_path" 2>&1)
+            exit_code=$?
+            echo -e "$output"
+            echo ""
+            echo "Exit code: $exit_code"
+            ;;
         help|--help|-h)
             echo "Prism $VERSION - A fast, customizable status line for Claude Code"
             echo ""
             echo "Usage:"
-            echo "  prism init         Create .claude/prism.json in current directory"
-            echo "  prism init-global  Create ~/.claude/prism-config.json"
-            echo "  prism version      Show version"
-            echo "  prism help         Show this help"
+            echo "  prism init                  Create .claude/prism.json in current directory"
+            echo "  prism init-global           Create ~/.claude/prism-config.json"
+            echo "  prism plugins               List discovered plugins"
+            echo "  prism test-plugin <name>    Test a plugin with sample input"
+            echo "  prism version               Show version"
+            echo "  prism help                  Show this help"
             echo ""
             echo "Config precedence (highest to lowest):"
-            echo "  1. .claude/prism.local.json  Your personal overrides (gitignored)"
-            echo "  2. .claude/prism.json        Repo config (commit for your team)"
-            echo "  3. ~/.claude/prism-config.json  Global defaults"
+            echo "  1. .claude/prism.local.json    Your personal overrides (gitignored)"
+            echo "  2. .claude/prism.json          Repo config (commit for your team)"
+            echo "  3. ~/.claude/prism-config.json Global defaults"
+            echo ""
+            echo "Plugin directories (project takes precedence):"
+            echo "  1. .claude/prism-plugins/      Project-specific plugins"
+            echo "  2. ~/.claude/prism-plugins/    User plugins"
             ;;
         *)
             echo "Unknown command: $1"
@@ -161,6 +274,138 @@ config_get() {
 # Estimated system overhead (system prompt, tools, MCP, agents, memory)
 # Adjust this based on your setup - check /context for actual values
 SYSTEM_OVERHEAD_TOKENS=23000
+
+# =============================================================================
+# Plugin System
+# =============================================================================
+
+# Plugin directories (searched in order)
+PLUGIN_DIR_USER="$HOME/.claude/prism-plugins"
+PLUGIN_DIR_PROJECT=""  # Set after PROJECT_DIR is parsed
+PLUGIN_CACHE="/tmp/prism-plugins"
+PLUGIN_TIMEOUT_MS=500
+
+# Discover plugins from all plugin directories
+# Returns space-separated list of "name:path" pairs
+discover_plugins() {
+    local cache_key=$(echo "${PROJECT_DIR:-global}" | md5 -q)
+    local cache_file="${PLUGIN_CACHE}-${cache_key}"
+
+    # Return cached if exists
+    if [ -f "$cache_file" ]; then
+        cat "$cache_file"
+        return
+    fi
+
+    local plugins=""
+    local seen_names=""
+
+    # Scan directories (project takes precedence over user)
+    for dir in "${PROJECT_DIR}/.claude/prism-plugins" "$PLUGIN_DIR_USER"; do
+        [ -d "$dir" ] || continue
+        for plugin in "$dir"/prism-plugin-*; do
+            [ -x "$plugin" ] || continue
+            # Extract name: prism-plugin-weather.sh -> weather
+            local basename=$(basename "$plugin")
+            local name="${basename#prism-plugin-}"
+            name="${name%%.*}"  # Remove extension
+
+            # Skip if we've already seen this name (project wins)
+            if [[ " $seen_names " != *" $name "* ]]; then
+                seen_names+=" $name"
+                plugins+="${name}:${plugin} "
+            fi
+        done
+    done
+
+    echo "$plugins" > "$cache_file"
+    echo "$plugins"
+}
+
+# Get plugin path by name (returns empty if not found)
+get_plugin_path() {
+    local name="$1"
+    local plugins=$(discover_plugins)
+    for entry in $plugins; do
+        local plugin_name="${entry%%:*}"
+        local plugin_path="${entry#*:}"
+        if [ "$plugin_name" = "$name" ]; then
+            echo "$plugin_path"
+            return
+        fi
+    done
+}
+
+# Build JSON input for plugins
+build_plugin_input() {
+    local plugin_name="$1"
+    local config=$(get_config)
+    local plugin_config=$(echo "$config" | jq -c --arg name "$plugin_name" '.plugins[$name] // {}' 2>/dev/null)
+
+    # Check if session is idle
+    local is_idle="false"
+    is_session_idle && is_idle="true"
+
+    cat << EOF
+{
+  "prism": {
+    "version": "$VERSION",
+    "project_dir": "$PROJECT_DIR",
+    "current_dir": "$CURRENT_DIR",
+    "session_id": "$SESSION_ID",
+    "is_idle": $is_idle
+  },
+  "session": {
+    "model": "$MODEL",
+    "context_pct": $PCT,
+    "cost_usd": $COST,
+    "lines_added": $GIT_LINES_ADDED,
+    "lines_removed": $GIT_LINES_REMOVED
+  },
+  "config": {
+    "$plugin_name": $plugin_config
+  },
+  "colors": {
+    "cyan": "\u001b[36m",
+    "green": "\u001b[32m",
+    "yellow": "\u001b[33m",
+    "red": "\u001b[31m",
+    "magenta": "\u001b[35m",
+    "blue": "\u001b[34m",
+    "gray": "\u001b[90m",
+    "dim": "\u001b[2m",
+    "reset": "\u001b[0m"
+  }
+}
+EOF
+}
+
+# Run a plugin and capture its output
+# Returns: plugin output on stdout, exits 0 on success
+run_plugin() {
+    local name="$1"
+    local plugin_path=$(get_plugin_path "$name")
+
+    [ -z "$plugin_path" ] && return 1
+
+    # Get timeout from config or use default (convert ms to seconds for timeout command)
+    local config=$(get_config)
+    local timeout_ms=$(echo "$config" | jq -r --arg name "$name" '.plugins[$name].timeout_ms // .plugins.timeout_ms // 500' 2>/dev/null)
+    local timeout_sec=$(echo "scale=2; $timeout_ms / 1000" | bc)
+
+    # Build input and run plugin with timeout
+    local input=$(build_plugin_input "$name")
+    local output
+    output=$(echo "$input" | timeout "$timeout_sec" "$plugin_path" 2>/dev/null)
+    local exit_code=$?
+
+    if [ $exit_code -eq 0 ] && [ -n "$output" ]; then
+        echo "$output"
+        return 0
+    fi
+
+    return 1
+}
 
 # Read and store full JSON input for later use
 INPUT=$(cat)
@@ -844,6 +1089,14 @@ build_line() {
             mcp)
                 if [ -n "$MCP_STATUS" ]; then
                     line_output+="${sep}${GRAY}${MCP_STATUS}${RESET}"
+                    sep=" ${DIM}·${RESET} "
+                fi
+                ;;
+            *)
+                # Try to run as a plugin
+                local plugin_output=$(run_plugin "$section")
+                if [ -n "$plugin_output" ]; then
+                    line_output+="${sep}${plugin_output}"
                     sep=" ${DIM}·${RESET} "
                 fi
                 ;;

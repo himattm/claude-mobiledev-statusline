@@ -230,6 +230,82 @@ The directory section shows where Claude was started, with smart handling when y
 **Context % doesn't match /context**
 - Adjust `SYSTEM_OVERHEAD_TOKENS` in script (default: 23000)
 
+## Plugins
+
+Prism supports custom plugins to add new sections to your status line.
+
+### Plugin Directories
+
+| Location | Purpose |
+|----------|---------|
+| `~/.claude/prism-plugins/` | User plugins (available in all projects) |
+| `.claude/prism-plugins/` | Project plugins (project-specific) |
+
+Project plugins take precedence if names conflict.
+
+### Using Plugins
+
+1. Add the plugin name to your `sections` array:
+   ```json
+   {
+     "sections": ["dir", "model", "weather", "git"]
+   }
+   ```
+
+2. Configure the plugin (optional):
+   ```json
+   {
+     "plugins": {
+       "weather": {
+         "location": "San Francisco"
+       }
+     }
+   }
+   ```
+
+### Writing Plugins
+
+Plugins are executable scripts that:
+- Receive JSON on **stdin** with session context, config, and colors
+- Output formatted text with ANSI codes to **stdout**
+- Exit 0 with output to show, exit 0 with no output to hide
+
+**Naming**: `prism-plugin-{name}.sh` (or `.py`, or no extension)
+
+**Example plugin** (`~/.claude/prism-plugins/prism-plugin-weather.sh`):
+
+```bash
+#!/bin/bash
+set -e
+INPUT=$(cat)
+LOCATION=$(echo "$INPUT" | jq -r '.config.weather.location // "NYC"')
+CYAN=$(echo "$INPUT" | jq -r '.colors.cyan')
+RESET=$(echo "$INPUT" | jq -r '.colors.reset')
+
+TEMP=$(curl -sf "wttr.in/${LOCATION}?format=%t" 2>/dev/null || echo "")
+[ -z "$TEMP" ] && exit 0
+
+echo -e "${CYAN}${TEMP}${RESET}"
+```
+
+**Input JSON structure**:
+```json
+{
+  "prism": { "version": "0.1.0", "project_dir": "...", "is_idle": true },
+  "session": { "model": "Opus 4.5", "context_pct": 45, "cost_usd": 1.23 },
+  "config": { "weather": { "location": "SF" } },
+  "colors": { "cyan": "\u001b[36m", "reset": "\u001b[0m", ... }
+}
+```
+
+**CLI Commands**:
+```bash
+prism plugins              # List discovered plugins
+prism test-plugin weather  # Test a plugin with sample input
+```
+
+See [examples/prism-plugin-weather.sh](examples/prism-plugin-weather.sh) for a complete template.
+
 ## Dependencies
 
 - `jq` - JSON parsing
@@ -240,12 +316,14 @@ The directory section shows where Claude was started, with smart handling when y
 
 ```bash
 # Run tests
-./test.sh
+./tests/test_prism.sh
 
 # Test CLI commands
 ./prism.sh help
 ./prism.sh init
 ./prism.sh init-global
+./prism.sh plugins
+./prism.sh test-plugin git
 ```
 
 ## License
