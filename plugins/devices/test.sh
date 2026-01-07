@@ -22,8 +22,8 @@ TESTS_SKIPPED=0
 
 # Test directory
 TEST_DIR=$(mktemp -d)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLUGIN="$HOME/.claude/prism-plugins/prism-plugin-devices.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN="$SCRIPT_DIR/prism-plugin-devices.sh"
 
 # Cleanup on exit
 cleanup() {

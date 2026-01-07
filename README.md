@@ -1,15 +1,10 @@
-# 💎 Prism
+# Prism
 
 A fast, customizable status line for Claude Code.
 
 ![New Session](screenshots/new_session.png)
 
 ![In Progress](screenshots/in_progress.png)
-
-```
-💎 my-app · Opus 4.5 · [████████▒▒] 81% · +658 -210 · $15.14 · main*+ · 𓃰3 · ⚒ · mcp:2
-⬢ emulator-5560:6.89 · ⬡ emulator-5562:6.89 ·   iPhone 15:6.89
-```
 
 ## Quick Start
 
@@ -22,7 +17,7 @@ Then restart Claude Code or start a new session.
 <details>
 <summary>Manual installation</summary>
 
-1. **Download the scripts:**
+1. Download the scripts:
    ```bash
    curl -o ~/.claude/prism.sh https://raw.githubusercontent.com/himattm/prism/main/prism.sh
    curl -o ~/.claude/prism-idle-hook.sh https://raw.githubusercontent.com/himattm/prism/main/prism-idle-hook.sh
@@ -30,7 +25,7 @@ Then restart Claude Code or start a new session.
    chmod +x ~/.claude/prism*.sh
    ```
 
-2. **Enable in Claude Code** (`~/.claude/settings.json`):
+2. Enable in Claude Code (`~/.claude/settings.json`):
    ```json
    {
      "statusLine": {
@@ -44,287 +39,106 @@ Then restart Claude Code or start a new session.
    }
    ```
 
-3. **Restart Claude Code** or start a new session.
+3. Restart Claude Code or start a new session.
 
 </details>
 
-## Let Claude Set It Up
-
-Copy one of these prompts into Claude Code:
-
-**Full installation:**
-```
-Install Prism from https://github.com/himattm/prism - run the install script and configure a .claude/prism.json for this repo with an icon of my choice.
-```
-
-**Per-repo setup only:**
-```
-Create a .claude/prism.json for this repo. Suggest some icon options for me to choose from, then configure my Android package name and iOS bundle ID.
-```
-
 ## Configuration
 
-Prism uses a 3-tier config system. Higher tiers override lower tiers:
+Prism uses a 3-tier config system:
 
 ```
-.claude/prism.local.json       ← Your personal overrides (gitignored)
-       ↓ overrides
-.claude/prism.json             ← Repo config (commit for your team)
-       ↓ overrides
-~/.claude/prism-config.json    ← Your global defaults
+.claude/prism.local.json       <- Your personal overrides (gitignored)
+       | overrides
+.claude/prism.json             <- Repo config (commit for your team)
+       | overrides
+~/.claude/prism-config.json    <- Your global defaults
 ```
 
 ### Quick Setup
 
 ```bash
-# Create global defaults (all your repos)
-~/.claude/prism.sh init-global
-
-# Create repo config (for this project)
-~/.claude/prism.sh init
+~/.claude/prism.sh init-global  # Create global defaults
+~/.claude/prism.sh init         # Create repo config
 ```
 
-Or copy from [examples/](examples/).
-
-### When to Use Each Tier
-
-| Tier | File | Commit? | Use for |
-|------|------|---------|---------|
-| **Global** | `~/.claude/prism-config.json` | No | Your default sections, personal preferences |
-| **Repo** | `.claude/prism.json` | Yes | Team icon, package names, shared settings |
-| **Local** | `.claude/prism.local.json` | No | Personal icon override, machine-specific tweaks |
-
-### Global Config
-
-Your defaults across all repos. Create with `prism.sh init-global`:
-
-```json
-{
-  "sections": ["dir", "model", "context", "cost", "git"]
-}
-```
-
-### Repo Config
-
-Shared team settings. Create with `prism.sh init`:
+### Example Config
 
 ```json
 {
   "icon": "🤖",
-  "android": {
-    "packages": ["com.myapp.debug", "com.myapp"]
-  },
-  "ios": {
-    "bundleIds": ["com.myapp.debug"]
-  }
+  "sections": ["dir", "model", "context", "cost", "git", "gradle", "devices"]
 }
 ```
 
-### Local Overrides
-
-Personal tweaks not committed to git. Add `.claude/prism.local.json` to your `.gitignore`:
-
+**Multi-line:** Use array of arrays for multiple lines:
 ```json
 {
-  "icon": "🔧"
-}
-```
-
-### Sections
-
-Control what appears and in what order:
-
-```json
-{
-  "sections": ["dir", "model", "context", "cost", "git", "gradle", "mcp", "devices"]
-}
-```
-
-Available: `dir`, `model`, `context`, `linesChanged`, `cost`, `git`, `gradle`, `xcode`, `mcp`, `devices`
-
-### Full Example Config
-
-A complete `.claude/prism.json` with all available options:
-
-```json
-{
-  "icon": "🤖",
   "sections": [
-    ["dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp"],
+    ["dir", "model", "context", "cost", "git"],
     ["devices"]
-  ],
-  "android": {
-    "packages": ["com.myapp.debug", "com.myapp", "com.myapp.*"]
-  },
-  "ios": {
-    "bundleIds": ["com.myapp.debug", "com.myapp.*"]
-  }
+  ]
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `icon` | Emoji prefix for directory display |
-| `sections` | Array of sections (single line) or array of arrays (multi-line) |
-| `android.packages` | Package names to check for version display (supports `*` glob) |
-| `ios.bundleIds` | Bundle IDs to check for version display (supports `*` glob) |
+## Built-in Sections
 
-**Single-line format:** `"sections": ["dir", "model", "context", ...]`
-
-**Multi-line format:** `"sections": [["line1", "sections"], ["line2", "sections"], ...]`
-
-## Features
-
-| Feature | Description |
+| Section | Description |
 |---------|-------------|
-| **Smart Directory** | Shows project root at start, abbreviates when in subdirs: `cms/screenshots` |
-| **Context Bar** | Visual `[████░░▒▒]` showing usage, free space, and auto-compact buffer zone |
-| **Code Stats** | Uncommitted lines changed via git diff (`+658 -210`) and session cost (`$15.14`) |
-| **Git** | Branch with dirty indicators (`*` staged, `**` unstaged, `+` untracked) |
-| **Android** | Device list with app versions, `⬢` targeted / `⬡` non-targeted |
-| **iOS** | Simulator list with app versions,  Apple logo icon |
-| **Gradle** | `𓃰3` daemons running, `𓃰?` cold start expected |
-| **Xcode** | `⚒2` builds running |
-| **MCP** | `mcp:2` servers configured |
-
-### Directory Display
-
-The directory section shows where Claude was started, with smart handling when you navigate to subdirectories:
-
-| Location | Display |
-|----------|---------|
-| Project root | `claude-mobiledev-statusline` (full name, cyan) |
-| In subdirectory | `cms/screenshots` (abbreviated root dim, subdir bright) |
-| Deep nesting | `cms/k/v/engine` (last 3 dirs, intermediate ones abbreviated) |
-
-**Abbreviation rules:**
-- Project name > 6 chars with hyphens: first letter of each segment (`claude-mobiledev-statusline` → `cms`)
-- Project name > 6 chars without hyphens: first 3 characters (`screenshots` → `scr`)
-- Deep paths: show last 3 directories, abbreviate all but the final one to first letter
-
-## Reference
-
-### Symbols
-
-| Symbol | Meaning |
-|--------|---------|
-| `⬢` | Android device (targeted via ANDROID_SERIAL) |
-| `⬡` | Android device (not targeted) |
-| `` | iOS simulator (Apple logo) |
-| `𓃰` | Gradle daemon |
-| `⚒` | Xcode build |
-| `█░▒` | Context: used, free, buffer |
-
-### Troubleshooting
-
-**Version shows "--"**
-- Wait ~2 seconds for cache population
-- Verify app is installed: `adb shell pm list packages | grep yourapp`
-
-**Config changes not showing**
-- Config is cached per-session. Start new session or: `rm /tmp/prism-config-*`
-
-**Git info seems stale**
-- Git branch/status and diff stats are cached for 2 seconds to avoid blocking other git operations
-
-**Context % doesn't match /context**
-- Adjust `SYSTEM_OVERHEAD_TOKENS` in script (default: 23000)
+| `dir` | Project directory with smart abbreviation |
+| `model` | Current model name |
+| `context` | Visual context bar `[████░░▒▒]` |
+| `linesChanged` | Uncommitted lines `+123 -45` |
+| `cost` | Session cost `$1.23` |
 
 ## Plugins
 
-Prism supports custom plugins to add new sections to your status line.
+Plugins add additional sections. Install by copying to `~/.claude/prism-plugins/`:
 
-### Plugin Directories
-
-| Location | Purpose |
-|----------|---------|
-| `~/.claude/prism-plugins/` | User plugins (available in all projects) |
-| `.claude/prism-plugins/` | Project plugins (project-specific) |
-
-Project plugins take precedence if names conflict.
-
-### Using Plugins
-
-1. Add the plugin name to your `sections` array:
-   ```json
-   {
-     "sections": ["dir", "model", "weather", "git"]
-   }
-   ```
-
-2. Configure the plugin (optional):
-   ```json
-   {
-     "plugins": {
-       "weather": {
-         "location": "San Francisco"
-       }
-     }
-   }
-   ```
+| Plugin | Description | Details |
+|--------|-------------|---------|
+| [git](plugins/git/) | Branch and status `main**+` | [README](plugins/git/README.md) |
+| [devices](plugins/devices/) | Android/iOS devices | [README](plugins/devices/README.md) |
+| [gradle](plugins/gradle/) | Gradle daemon status | [README](plugins/gradle/README.md) |
+| [xcode](plugins/xcode/) | Xcode build status | [README](plugins/xcode/README.md) |
+| [mcp](plugins/mcp/) | MCP server count | [README](plugins/mcp/README.md) |
 
 ### Writing Plugins
 
 Plugins are executable scripts that:
 - Receive JSON on **stdin** with session context, config, and colors
-- Output formatted text with ANSI codes to **stdout**
+- Output formatted text to **stdout**
 - Exit 0 with output to show, exit 0 with no output to hide
 
-**Naming**: `prism-plugin-{name}.sh` (or `.py`, or no extension)
-
-**Example plugin** (`~/.claude/prism-plugins/prism-plugin-weather.sh`):
+**Naming:** `prism-plugin-{name}.sh` (or `.py`)
 
 ```bash
-#!/bin/bash
-set -e
-INPUT=$(cat)
-LOCATION=$(echo "$INPUT" | jq -r '.config.weather.location // "NYC"')
-CYAN=$(echo "$INPUT" | jq -r '.colors.cyan')
-RESET=$(echo "$INPUT" | jq -r '.colors.reset')
+# List plugins
+~/.claude/prism.sh plugins
 
-TEMP=$(curl -sf "wttr.in/${LOCATION}?format=%t" 2>/dev/null || echo "")
-[ -z "$TEMP" ] && exit 0
-
-echo -e "${CYAN}${TEMP}${RESET}"
+# Test a plugin
+~/.claude/prism.sh test-plugin git
 ```
 
-**Input JSON structure**:
-```json
-{
-  "prism": { "version": "0.1.0", "project_dir": "...", "is_idle": true },
-  "session": { "model": "Opus 4.5", "context_pct": 45, "cost_usd": 1.23 },
-  "config": { "weather": { "location": "SF" } },
-  "colors": { "cyan": "\u001b[36m", "reset": "\u001b[0m", ... }
-}
-```
+See [examples/prism-plugin-weather.sh](examples/prism-plugin-weather.sh) for a template.
 
-**CLI Commands**:
+## Development
+
 ```bash
-prism plugins              # List discovered plugins
-prism test-plugin weather  # Test a plugin with sample input
+# Run all tests
+./tests/test_prism.sh
+./plugins/git/test.sh
+./plugins/devices/test.sh
+./plugins/gradle/test.sh
+./plugins/mcp/test.sh
+./plugins/xcode/test.sh
 ```
-
-See [examples/prism-plugin-weather.sh](examples/prism-plugin-weather.sh) for a complete template.
 
 ## Dependencies
 
 - `jq` - JSON parsing
 - `adb` - Android device detection (optional)
-- `xcrun simctl` - iOS simulator detection (macOS only, optional)
-
-## Development
-
-```bash
-# Run tests
-./tests/test_prism.sh
-
-# Test CLI commands
-./prism.sh help
-./prism.sh init
-./prism.sh init-global
-./prism.sh plugins
-./prism.sh test-plugin git
-```
+- `xcrun simctl` - iOS simulator detection (optional, macOS only)
 
 ## License
 

@@ -19,8 +19,8 @@ TESTS_FAILED=0
 
 # Test directory
 TEST_DIR=$(mktemp -d)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLUGIN="$HOME/.claude/prism-plugins/prism-plugin-git.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN="$SCRIPT_DIR/prism-plugin-git.sh"
 
 # Cleanup on exit
 cleanup() {
