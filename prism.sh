@@ -38,37 +38,287 @@ EOF
         version|--version|-v)
             echo "Prism $VERSION"
             ;;
-        plugins)
-            # List discovered plugins
-            echo "Plugin directories:"
-            echo "  User:    ~/.claude/prism-plugins/"
-            echo "  Project: .claude/prism-plugins/"
-            echo ""
-            echo "Discovered plugins:"
+        plugin|plugins)
+            # Plugin management commands
+            PLUGIN_SUBCOMMAND="${2:-list}"
+            PLUGIN_DIR="$HOME/.claude/prism-plugins"
+            mkdir -p "$PLUGIN_DIR"
 
-            # Need to set PROJECT_DIR for discovery
-            PROJECT_DIR="${2:-.}"
-            PROJECT_DIR=$(cd "$PROJECT_DIR" 2>/dev/null && pwd)
+            # Helper: Parse plugin header metadata
+            parse_plugin_meta() {
+                local file="$1"
+                local key="$2"
+                grep "^# @${key} " "$file" 2>/dev/null | sed "s/^# @${key} //" | head -1
+            }
 
-            # Clear plugin cache to get fresh results
-            rm -f /tmp/prism-plugins-* 2>/dev/null
-
-            found=0
-            for dir in "${PROJECT_DIR}/.claude/prism-plugins" "$HOME/.claude/prism-plugins"; do
-                [ -d "$dir" ] || continue
-                for plugin in "$dir"/prism-plugin-*; do
-                    [ -x "$plugin" ] || continue
-                    basename=$(basename "$plugin")
-                    name="${basename#prism-plugin-}"
-                    name="${name%%.*}"
-                    echo "  $name  ($plugin)"
-                    found=1
+            # Helper: Compare semver versions (returns 0 if $1 < $2)
+            version_lt() {
+                [ "$1" = "$2" ] && return 1
+                local IFS=.
+                local i v1=($1) v2=($2)
+                for ((i=0; i<${#v1[@]} || i<${#v2[@]}; i++)); do
+                    local n1=${v1[i]:-0} n2=${v2[i]:-0}
+                    n1=$(echo "$n1" | sed 's/[^0-9].*//')
+                    n2=$(echo "$n2" | sed 's/[^0-9].*//')
+                    [ "${n1:-0}" -lt "${n2:-0}" ] && return 0
+                    [ "${n1:-0}" -gt "${n2:-0}" ] && return 1
                 done
-            done
+                return 1
+            }
 
-            if [ "$found" -eq 0 ]; then
-                echo "  (none found)"
-            fi
+            case "$PLUGIN_SUBCOMMAND" in
+                list|ls)
+                    # List installed plugins with version info
+                    echo "Installed plugins:"
+                    echo ""
+                    printf "  %-12s %-10s %-20s %s\n" "NAME" "VERSION" "AUTHOR" "SOURCE"
+                    printf "  %-12s %-10s %-20s %s\n" "----" "-------" "------" "------"
+
+                    found=0
+                    for plugin in "$PLUGIN_DIR"/prism-plugin-*; do
+                        [ -x "$plugin" ] || continue
+                        name=$(parse_plugin_meta "$plugin" "name")
+                        [ -z "$name" ] && name=$(basename "$plugin" | sed 's/prism-plugin-//;s/\..*//')
+                        version=$(parse_plugin_meta "$plugin" "version")
+                        [ -z "$version" ] && version="?"
+                        author=$(parse_plugin_meta "$plugin" "author")
+                        [ -z "$author" ] && author="-"
+                        source=$(parse_plugin_meta "$plugin" "source")
+                        [ -z "$source" ] && source="-"
+                        printf "  %-12s %-10s %-20s %s\n" "$name" "$version" "$author" "$source"
+                        found=1
+                    done
+
+                    if [ "$found" -eq 0 ]; then
+                        echo "  (no plugins installed)"
+                    fi
+                    echo ""
+                    echo "Plugin directory: $PLUGIN_DIR"
+                    ;;
+
+                add|install)
+                    # Install a plugin from URL
+                    URL="$3"
+                    if [ -z "$URL" ]; then
+                        echo "Usage: prism plugin add <github-url|raw-url>"
+                        echo ""
+                        echo "Examples:"
+                        echo "  prism plugin add https://github.com/user/prism-plugin-weather"
+                        echo "  prism plugin add https://raw.githubusercontent.com/user/repo/main/prism-plugin-weather.sh"
+                        exit 1
+                    fi
+
+                    # Detect URL type and normalize
+                    if [[ "$URL" =~ ^https://github.com/([^/]+)/([^/]+)$ ]]; then
+                        # GitHub repo URL - fetch from main branch
+                        OWNER="${BASH_REMATCH[1]}"
+                        REPO="${BASH_REMATCH[2]}"
+                        # Try common plugin file locations
+                        RAW_URL="https://raw.githubusercontent.com/$OWNER/$REPO/main/prism-plugin-${REPO#prism-plugin-}.sh"
+                        # Also try just the repo name
+                        if ! curl -fsSL --max-time 5 "$RAW_URL" >/dev/null 2>&1; then
+                            RAW_URL="https://raw.githubusercontent.com/$OWNER/$REPO/main/${REPO}.sh"
+                        fi
+                    elif [[ "$URL" =~ ^https://raw.githubusercontent.com/ ]] || [[ "$URL" =~ \.sh$ ]]; then
+                        # Direct raw URL
+                        RAW_URL="$URL"
+                    else
+                        echo "Error: Unrecognized URL format"
+                        echo "Provide a GitHub repo URL or direct raw URL to a .sh file"
+                        exit 1
+                    fi
+
+                    echo "Fetching plugin from: $RAW_URL"
+
+                    # Download to temp file first
+                    TEMP_FILE=$(mktemp)
+                    if ! curl -fsSL --max-time 10 "$RAW_URL" -o "$TEMP_FILE" 2>/dev/null; then
+                        rm -f "$TEMP_FILE"
+                        echo "Error: Failed to download plugin"
+                        exit 1
+                    fi
+
+                    # Validate it's a prism plugin
+                    if ! grep -q "@prism-plugin" "$TEMP_FILE"; then
+                        rm -f "$TEMP_FILE"
+                        echo "Error: File doesn't appear to be a Prism plugin (missing @prism-plugin header)"
+                        exit 1
+                    fi
+
+                    # Extract plugin name
+                    PLUGIN_NAME=$(parse_plugin_meta "$TEMP_FILE" "name")
+                    if [ -z "$PLUGIN_NAME" ]; then
+                        PLUGIN_NAME=$(basename "$RAW_URL" .sh | sed 's/prism-plugin-//')
+                    fi
+
+                    DEST_FILE="$PLUGIN_DIR/prism-plugin-${PLUGIN_NAME}.sh"
+
+                    # Check if already installed
+                    if [ -f "$DEST_FILE" ]; then
+                        OLD_VERSION=$(parse_plugin_meta "$DEST_FILE" "version")
+                        NEW_VERSION=$(parse_plugin_meta "$TEMP_FILE" "version")
+                        echo "Plugin '$PLUGIN_NAME' already installed (version $OLD_VERSION)"
+                        echo "New version: $NEW_VERSION"
+                        read -p "Overwrite? [y/N] " -n 1 -r
+                        echo ""
+                        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                            rm -f "$TEMP_FILE"
+                            echo "Cancelled."
+                            exit 0
+                        fi
+                    fi
+
+                    # Install
+                    mv "$TEMP_FILE" "$DEST_FILE"
+                    chmod +x "$DEST_FILE"
+
+                    INSTALLED_VERSION=$(parse_plugin_meta "$DEST_FILE" "version")
+                    echo "Installed: $PLUGIN_NAME v${INSTALLED_VERSION:-unknown}"
+                    ;;
+
+                check-updates|check)
+                    # Check all plugins for updates
+                    echo "Checking for plugin updates..."
+                    echo ""
+
+                    updates_available=0
+                    for plugin in "$PLUGIN_DIR"/prism-plugin-*; do
+                        [ -x "$plugin" ] || continue
+                        name=$(parse_plugin_meta "$plugin" "name")
+                        [ -z "$name" ] && continue
+                        local_version=$(parse_plugin_meta "$plugin" "version")
+                        update_url=$(parse_plugin_meta "$plugin" "update-url")
+
+                        if [ -z "$update_url" ]; then
+                            printf "  %-12s %-10s (no update URL)\n" "$name" "$local_version"
+                            continue
+                        fi
+
+                        # Fetch remote version
+                        remote_content=$(curl -fsSL --max-time 5 "$update_url" 2>/dev/null)
+                        if [ -z "$remote_content" ]; then
+                            printf "  %-12s %-10s (fetch failed)\n" "$name" "$local_version"
+                            continue
+                        fi
+
+                        remote_version=$(echo "$remote_content" | grep "^# @version " | sed 's/^# @version //' | head -1)
+
+                        if [ -z "$remote_version" ]; then
+                            printf "  %-12s %-10s (no remote version)\n" "$name" "$local_version"
+                        elif version_lt "$local_version" "$remote_version"; then
+                            printf "  %-12s %-10s -> %-10s ${YELLOW}(update available)${RESET}\n" "$name" "$local_version" "$remote_version"
+                            updates_available=1
+                        else
+                            printf "  %-12s %-10s (up to date)\n" "$name" "$local_version"
+                        fi
+                    done
+
+                    echo ""
+                    if [ "$updates_available" -eq 1 ]; then
+                        echo "Run 'prism plugin update <name>' or 'prism plugin update --all' to update."
+                    else
+                        echo "All plugins are up to date."
+                    fi
+                    ;;
+
+                update|upgrade)
+                    # Update a specific plugin or all plugins
+                    TARGET="$3"
+                    if [ -z "$TARGET" ]; then
+                        echo "Usage: prism plugin update <plugin-name|--all>"
+                        exit 1
+                    fi
+
+                    update_plugin() {
+                        local plugin_path="$1"
+                        local name=$(parse_plugin_meta "$plugin_path" "name")
+                        local local_version=$(parse_plugin_meta "$plugin_path" "version")
+                        local update_url=$(parse_plugin_meta "$plugin_path" "update-url")
+
+                        if [ -z "$update_url" ]; then
+                            echo "  $name: no update URL configured"
+                            return 1
+                        fi
+
+                        echo "  $name: checking..."
+
+                        TEMP_FILE=$(mktemp)
+                        if ! curl -fsSL --max-time 10 "$update_url" -o "$TEMP_FILE" 2>/dev/null; then
+                            rm -f "$TEMP_FILE"
+                            echo "  $name: fetch failed"
+                            return 1
+                        fi
+
+                        remote_version=$(parse_plugin_meta "$TEMP_FILE" "version")
+
+                        if [ -z "$remote_version" ]; then
+                            rm -f "$TEMP_FILE"
+                            echo "  $name: no version in remote file"
+                            return 1
+                        fi
+
+                        if version_lt "$local_version" "$remote_version"; then
+                            mv "$TEMP_FILE" "$plugin_path"
+                            chmod +x "$plugin_path"
+                            echo "  $name: updated $local_version -> $remote_version"
+                        else
+                            rm -f "$TEMP_FILE"
+                            echo "  $name: already up to date ($local_version)"
+                        fi
+                    }
+
+                    if [ "$TARGET" = "--all" ] || [ "$TARGET" = "-a" ]; then
+                        echo "Updating all plugins..."
+                        for plugin in "$PLUGIN_DIR"/prism-plugin-*; do
+                            [ -x "$plugin" ] || continue
+                            update_plugin "$plugin"
+                        done
+                    else
+                        PLUGIN_PATH="$PLUGIN_DIR/prism-plugin-${TARGET}.sh"
+                        if [ ! -f "$PLUGIN_PATH" ]; then
+                            echo "Error: Plugin '$TARGET' not found"
+                            exit 1
+                        fi
+                        update_plugin "$PLUGIN_PATH"
+                    fi
+                    ;;
+
+                remove|uninstall|rm)
+                    # Remove a plugin
+                    PLUGIN_NAME="$3"
+                    if [ -z "$PLUGIN_NAME" ]; then
+                        echo "Usage: prism plugin remove <plugin-name>"
+                        exit 1
+                    fi
+
+                    PLUGIN_PATH="$PLUGIN_DIR/prism-plugin-${PLUGIN_NAME}.sh"
+                    if [ ! -f "$PLUGIN_PATH" ]; then
+                        echo "Error: Plugin '$PLUGIN_NAME' not found"
+                        exit 1
+                    fi
+
+                    rm "$PLUGIN_PATH"
+                    echo "Removed: $PLUGIN_NAME"
+                    ;;
+
+                *)
+                    echo "Usage: prism plugin <command>"
+                    echo ""
+                    echo "Commands:"
+                    echo "  list                    List installed plugins"
+                    echo "  add <url>               Install a plugin from GitHub or raw URL"
+                    echo "  check-updates           Check all plugins for updates"
+                    echo "  update <name|--all>     Update a plugin or all plugins"
+                    echo "  remove <name>           Remove a plugin"
+                    echo ""
+                    echo "Examples:"
+                    echo "  prism plugin list"
+                    echo "  prism plugin add https://github.com/user/prism-plugin-weather"
+                    echo "  prism plugin check-updates"
+                    echo "  prism plugin update git"
+                    echo "  prism plugin update --all"
+                    ;;
+            esac
             ;;
         test-plugin)
             # Test a plugin with sample input
@@ -151,19 +401,81 @@ EOF
             echo "Usage:"
             echo "  prism init                  Create .claude/prism.json in current directory"
             echo "  prism init-global           Create ~/.claude/prism-config.json"
-            echo "  prism plugins               List discovered plugins"
-            echo "  prism test-plugin <name>    Test a plugin with sample input"
+            echo "  prism update                Check for Prism updates and install"
+            echo "  prism check-update          Check for Prism updates (no install)"
             echo "  prism version               Show version"
             echo "  prism help                  Show this help"
+            echo ""
+            echo "Plugin commands:"
+            echo "  prism plugin list           List installed plugins with versions"
+            echo "  prism plugin add <url>      Install plugin from GitHub/URL"
+            echo "  prism plugin check-updates  Check plugins for updates"
+            echo "  prism plugin update <name>  Update a plugin (or --all)"
+            echo "  prism plugin remove <name>  Remove a plugin"
+            echo "  prism test-plugin <name>    Test a plugin with sample input"
             echo ""
             echo "Config precedence (highest to lowest):"
             echo "  1. .claude/prism.local.json    Your personal overrides (gitignored)"
             echo "  2. .claude/prism.json          Repo config (commit for your team)"
             echo "  3. ~/.claude/prism-config.json Global defaults"
+            ;;
+        check-update)
+            echo "Checking for Prism updates..."
+            REMOTE_VERSION=$(curl -fsSL --max-time 5 \
+              "https://raw.githubusercontent.com/himattm/prism/main/prism.sh" \
+              2>/dev/null | head -10 | grep '^VERSION=' | cut -d'"' -f2)
+
+            if [ -z "$REMOTE_VERSION" ]; then
+                echo "Error: Could not fetch version from GitHub"
+                exit 1
+            fi
+
+            echo "Local version:  $VERSION"
+            echo "Remote version: $REMOTE_VERSION"
+
+            if [ "$VERSION" = "$REMOTE_VERSION" ]; then
+                echo ""
+                echo "You're on the latest version."
+            else
+                echo ""
+                echo "Update available: $VERSION -> $REMOTE_VERSION"
+                echo "Run 'prism update' to install."
+            fi
+            ;;
+        update)
+            echo "Checking for Prism updates..."
+            REMOTE_VERSION=$(curl -fsSL --max-time 5 \
+              "https://raw.githubusercontent.com/himattm/prism/main/prism.sh" \
+              2>/dev/null | head -10 | grep '^VERSION=' | cut -d'"' -f2)
+
+            if [ -z "$REMOTE_VERSION" ]; then
+                echo "Error: Could not fetch version from GitHub"
+                exit 1
+            fi
+
+            echo "Local version:  $VERSION"
+            echo "Remote version: $REMOTE_VERSION"
+
+            if [ "$VERSION" = "$REMOTE_VERSION" ]; then
+                echo ""
+                echo "You're already on the latest version!"
+                exit 0
+            fi
+
             echo ""
-            echo "Plugin directories (project takes precedence):"
-            echo "  1. .claude/prism-plugins/      Project-specific plugins"
-            echo "  2. ~/.claude/prism-plugins/    User plugins"
+            echo "Update available: $VERSION -> $REMOTE_VERSION"
+            echo ""
+            read -p "Would you like to update? [y/N] " -n 1 -r
+            echo ""
+
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                echo "Updating Prism..."
+                curl -fsSL https://raw.githubusercontent.com/himattm/prism/main/install.sh | bash
+                # Clear the update cache after successful update
+                rm -f /tmp/prism-update-check /tmp/prism-update-prompted
+            else
+                echo "Update cancelled."
+            fi
             ;;
         *)
             echo "Unknown command: $1"
@@ -209,6 +521,7 @@ GIT_CACHE_MAX_AGE=2  # seconds
 
 
 # Default section order (gradle/xcode before devices since devices go on new line)
+# Note: "update" plugin is always run first (hardcoded) - not included in configurable sections
 DEFAULT_SECTIONS='["dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp", "devices"]'
 
 # Load config from .claude/prism.json (cached per session)
@@ -1137,6 +1450,25 @@ else
     # Single line: sections is flat array
     SECTIONS=$(echo "$SECTIONS_JSON" | jq -r '.[]' 2>/dev/null)
     OUTPUT=$(build_line "$SECTIONS")
+fi
+
+# Always run update plugin first (not configurable - always shown when update available)
+UPDATE_OUTPUT=$(run_plugin "update" 2>/dev/null || true)
+if [ -n "$UPDATE_OUTPUT" ]; then
+    # Prepend update indicator to first line
+    if [ "$IS_MULTILINE" = "true" ]; then
+        # For multiline, prepend to first line only
+        FIRST_LINE="${OUTPUT%%\\n*}"
+        REST="${OUTPUT#*\\n}"
+        if [ "$FIRST_LINE" = "$OUTPUT" ]; then
+            # Only one line
+            OUTPUT="${UPDATE_OUTPUT} ${DIM}·${RESET} ${OUTPUT}"
+        else
+            OUTPUT="${UPDATE_OUTPUT} ${DIM}·${RESET} ${FIRST_LINE}\n${REST}"
+        fi
+    else
+        OUTPUT="${UPDATE_OUTPUT} ${DIM}·${RESET} ${OUTPUT}"
+    fi
 fi
 
 echo -e "$OUTPUT"

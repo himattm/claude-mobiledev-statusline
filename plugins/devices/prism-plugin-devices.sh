@@ -1,6 +1,11 @@
 #!/bin/bash
-# Prism Plugin: Devices
-# Shows connected Android devices and iOS simulators with optional app versions
+# @prism-plugin
+# @name devices
+# @version 1.0.0
+# @description Shows connected Android/iOS devices with optional app versions
+# @author Prism
+# @source https://github.com/himattm/prism
+# @update-url https://raw.githubusercontent.com/himattm/prism/main/plugins/devices/prism-plugin-devices.sh
 #
 # Config in prism.json:
 #   "plugins": {

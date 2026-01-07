@@ -1,6 +1,11 @@
 #!/bin/bash
-# Prism Plugin: MCP
-# Shows MCP (Model Context Protocol) server count
+# @prism-plugin
+# @name mcp
+# @version 1.0.0
+# @description Shows MCP server count
+# @author Prism
+# @source https://github.com/himattm/prism
+# @update-url https://raw.githubusercontent.com/himattm/prism/main/plugins/mcp/prism-plugin-mcp.sh
 #
 # Output: mcp:N where N is the number of configured servers
 # Checks both global (~/.claude.json) and project (.mcp.json) configs

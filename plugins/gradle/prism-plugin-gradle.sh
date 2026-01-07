@@ -1,6 +1,11 @@
 #!/bin/bash
-# Prism Plugin: Gradle
-# Shows Gradle daemon status in Gradle projects
+# @prism-plugin
+# @name gradle
+# @version 1.0.0
+# @description Shows Gradle daemon status in Gradle projects
+# @author Prism
+# @source https://github.com/himattm/prism
+# @update-url https://raw.githubusercontent.com/himattm/prism/main/plugins/gradle/prism-plugin-gradle.sh
 #
 # Output: daemon icon with count (e.g., 𓃰3) or ? if no daemon running
 # Only shows in projects with build.gradle or settings.gradle

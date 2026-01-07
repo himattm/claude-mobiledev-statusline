@@ -1,6 +1,11 @@
 #!/bin/bash
-# Prism Plugin: Git
-# Shows git branch and dirty status indicators
+# @prism-plugin
+# @name git
+# @version 1.0.0
+# @description Shows git branch and dirty status indicators
+# @author Prism
+# @source https://github.com/himattm/prism
+# @update-url https://raw.githubusercontent.com/himattm/prism/main/plugins/git/prism-plugin-git.sh
 #
 # Output: branch_name with indicators (* staged, ** unstaged, + untracked, ⇣ behind, ⇡ ahead)
 # Example: main*+⇣⇡

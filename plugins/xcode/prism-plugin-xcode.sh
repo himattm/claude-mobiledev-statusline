@@ -1,6 +1,11 @@
 #!/bin/bash
-# Prism Plugin: Xcode
-# Shows Xcode build status in Xcode projects
+# @prism-plugin
+# @name xcode
+# @version 1.0.0
+# @description Shows Xcode build status in Xcode projects
+# @author Prism
+# @source https://github.com/himattm/prism
+# @update-url https://raw.githubusercontent.com/himattm/prism/main/plugins/xcode/prism-plugin-xcode.sh
 #
 # Output: hammer icon with count (e.g., ⚒2) or just icon if no builds
 # Only shows in projects with .xcodeproj or .xcworkspace

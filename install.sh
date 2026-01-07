@@ -53,13 +53,17 @@ curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism.sh" -o "$CLAUD
 curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism-idle-hook.sh" -o "$CLAUDE_DIR/prism-idle-hook.sh"
 curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism-busy-hook.sh" -o "$CLAUDE_DIR/prism-busy-hook.sh"
 
+curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism-update-hook.sh" -o "$CLAUDE_DIR/prism-update-hook.sh"
+
 chmod +x "$CLAUDE_DIR/prism.sh"
 chmod +x "$CLAUDE_DIR/prism-idle-hook.sh"
 chmod +x "$CLAUDE_DIR/prism-busy-hook.sh"
+chmod +x "$CLAUDE_DIR/prism-update-hook.sh"
 
 success "  Downloaded prism.sh"
 success "  Downloaded prism-idle-hook.sh"
 success "  Downloaded prism-busy-hook.sh"
+success "  Downloaded prism-update-hook.sh"
 
 # Download bundled plugins
 info "Downloading plugins..."
@@ -67,8 +71,8 @@ info "Downloading plugins..."
 PLUGIN_DIR="$CLAUDE_DIR/prism-plugins"
 mkdir -p "$PLUGIN_DIR"
 
-for plugin in git gradle xcode mcp devices; do
-    curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/plugins/prism-plugin-${plugin}.sh" -o "$PLUGIN_DIR/prism-plugin-${plugin}.sh"
+for plugin in git gradle xcode mcp devices update; do
+    curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/plugins/${plugin}/prism-plugin-${plugin}.sh" -o "$PLUGIN_DIR/prism-plugin-${plugin}.sh"
     chmod +x "$PLUGIN_DIR/prism-plugin-${plugin}.sh"
     success "  Downloaded prism-plugin-${plugin}.sh"
 done
@@ -91,6 +95,10 @@ if [ ! -f "$SETTINGS_FILE" ]; then
           {
             "type": "command",
             "command": "$HOME/.claude/prism-busy-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/prism-update-hook.sh"
           }
         ]
       }
@@ -128,6 +136,10 @@ else
           {
             "type": "command",
             "command": "$HOME/.claude/prism-busy-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/prism-update-hook.sh"
           }
         ]
       }
