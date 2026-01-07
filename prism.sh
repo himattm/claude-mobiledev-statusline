@@ -566,6 +566,8 @@ get_context_bar() {
 
 # Function to get git info with register branch indicator (cached)
 get_git_info_uncached() {
+    cd "$PROJECT_DIR" 2>/dev/null || return
+
     if ! timeout 1 git rev-parse --git-dir > /dev/null 2>&1; then
         echo ""
         return
@@ -589,28 +591,38 @@ get_git_info_uncached() {
         DIRTY="${DIRTY}+"  # untracked
     fi
 
-    echo "${BRANCH}${DIRTY}"
+    # Check ahead/behind upstream
+    local arrows=""
+    local behind=$(timeout 1 git rev-list --count HEAD..@{upstream} 2>/dev/null || echo "0")
+    local ahead=$(timeout 1 git rev-list --count @{upstream}..HEAD 2>/dev/null || echo "0")
+    if [ "$behind" -gt 0 ] 2>/dev/null; then
+        arrows="⇣"
+    fi
+    if [ "$ahead" -gt 0 ] 2>/dev/null; then
+        arrows="${arrows}⇡"
+    fi
+
+    echo "${BRANCH}${DIRTY}${arrows}"
 }
 
 get_git_info() {
     local cache_file="${GIT_INFO_CACHE}-$(echo "$PROJECT_DIR" | md5 -q)"
 
-    # Always return cache if it exists
+    # Always return cache if it exists and fresh
     if [ -f "$cache_file" ]; then
         local cache_age=$(($(date +%s) - $(stat -f %m "$cache_file" 2>/dev/null || echo 0)))
         if [ "$cache_age" -lt "$GIT_CACHE_MAX_AGE" ]; then
             cat "$cache_file"
             return
         fi
+        # Cache is stale - only refresh when idle
+        if ! is_session_idle; then
+            cat "$cache_file"
+            return
+        fi
     fi
 
-    # Only refresh git info when session is idle (Claude not actively responding)
-    if ! is_session_idle; then
-        cat "$cache_file" 2>/dev/null
-        return
-    fi
-
-    # Session is idle - safe to run git
+    # No cache or cache is stale and we're idle - run git
     local info=$(get_git_info_uncached)
     echo "$info" > "$cache_file"
     cat "$cache_file" 2>/dev/null
@@ -618,6 +630,8 @@ get_git_info() {
 
 # Function to get git diff stats (lines added/removed since last commit, cached)
 get_git_diff_stats_uncached() {
+    cd "$PROJECT_DIR" 2>/dev/null || { echo "0 0"; return; }
+
     if ! timeout 1 git rev-parse --git-dir > /dev/null 2>&1; then
         echo "0 0"
         return
@@ -638,15 +652,14 @@ get_git_diff_stats() {
             cat "$cache_file"
             return
         fi
+        # Cache is stale - only refresh when idle
+        if ! is_session_idle; then
+            cat "$cache_file"
+            return
+        fi
     fi
 
-    # Only refresh git info when session is idle (Claude not actively responding)
-    if ! is_session_idle; then
-        cat "$cache_file" 2>/dev/null || echo "0 0"
-        return
-    fi
-
-    # Session is idle - safe to run git
+    # No cache or cache is stale and we're idle - run git
     local stats=$(get_git_diff_stats_uncached)
     echo "$stats" > "$cache_file"
     cat "$cache_file" 2>/dev/null || echo "0 0"
