@@ -201,20 +201,45 @@ func renderContextBar(pct int) string {
 	// Warning zone starts at 80%
 	warningStart := 8
 
+	// Choose color based on percentage: white -> yellow -> red
+	var barColor string
+	switch {
+	case pct >= 90:
+		barColor = colors.Red
+	case pct >= 70:
+		barColor = colors.Yellow
+	default:
+		barColor = "" // White/default
+	}
+
 	var bar strings.Builder
 	bar.WriteString("[")
 
 	for i := 0; i < barLen; i++ {
 		if i < filled {
+			if barColor != "" {
+				bar.WriteString(barColor)
+			}
 			bar.WriteString("█")
+			if barColor != "" {
+				bar.WriteString(colors.Reset)
+			}
 		} else if i >= warningStart {
+			bar.WriteString(colors.Gray)
 			bar.WriteString("▒")
+			bar.WriteString(colors.Reset)
 		} else {
+			bar.WriteString(colors.Gray)
 			bar.WriteString("░")
+			bar.WriteString(colors.Reset)
 		}
 	}
 
-	bar.WriteString(fmt.Sprintf("] %d%%", pct))
+	if barColor != "" {
+		bar.WriteString(fmt.Sprintf("] %s%d%%%s", barColor, pct, colors.Reset))
+	} else {
+		bar.WriteString(fmt.Sprintf("] %d%%", pct))
+	}
 	return bar.String()
 }
 

@@ -82,11 +82,14 @@ if [ "$USE_GO" = true ]; then
 
     BINARY_URL="https://github.com/$REPO/releases/latest/download/prism-${OS}-${ARCH}"
 
-    if curl -fsSL "$BINARY_URL" -o "$CLAUDE_DIR/prism" 2>/dev/null; then
-        chmod +x "$CLAUDE_DIR/prism"
+    # Use atomic update: download to temp file, then mv (prevents corruption if prism is running)
+    if curl -fsSL "$BINARY_URL" -o "$CLAUDE_DIR/prism.new" 2>/dev/null; then
+        chmod +x "$CLAUDE_DIR/prism.new"
+        mv "$CLAUDE_DIR/prism.new" "$CLAUDE_DIR/prism"
         success "  Downloaded prism binary (${OS}-${ARCH})"
         PRISM_CMD="prism"
     else
+        rm -f "$CLAUDE_DIR/prism.new" 2>/dev/null
         warn "  Pre-built binary not available for ${OS}-${ARCH}"
 
         # Try to build from source if Go is installed
@@ -97,10 +100,12 @@ if [ "$USE_GO" = true ]; then
 
             curl -fsSL "https://github.com/$REPO/archive/$BRANCH.tar.gz" | tar -xz -C "$TMP_DIR"
             cd "$TMP_DIR/prism-$BRANCH"
-            go build -o "$CLAUDE_DIR/prism" ./cmd/prism/
+            # Build to temp file, then atomic move
+            go build -o "$CLAUDE_DIR/prism.new" ./cmd/prism/
             cd - > /dev/null
 
-            chmod +x "$CLAUDE_DIR/prism"
+            chmod +x "$CLAUDE_DIR/prism.new"
+            mv "$CLAUDE_DIR/prism.new" "$CLAUDE_DIR/prism"
             success "  Built prism binary from source"
             PRISM_CMD="prism"
         else
