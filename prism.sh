@@ -1053,7 +1053,7 @@ build_line() {
                 sep=" ${DIM}·${RESET} "
                 ;;
             linesChanged)
-                # Use git diff stats (net change since last commit) instead of session totals
+                # Always show git diff stats (uncommitted changes) for consistency
                 line_output+="${sep}${GREEN}+${GIT_LINES_ADDED}${RESET} ${RED}-${GIT_LINES_REMOVED}${RESET}"
                 sep=" ${DIM}·${RESET} "
                 ;;
