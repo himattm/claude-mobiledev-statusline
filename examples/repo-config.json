@@ -1,0 +1,13 @@
+{
+  "icon": "🚀",
+  "sections": [
+    ["dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp"],
+    ["devices"]
+  ],
+  "android": {
+    "packages": ["com.example.app.debug", "com.example.app"]
+  },
+  "ios": {
+    "bundleIds": ["com.example.app"]
+  }
+}

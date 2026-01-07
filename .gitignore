@@ -2,7 +2,7 @@
 .claude/
 
 # Local config overrides (not committed)
-.claude-statusline.local.json
+.prism.local.json
 
 # Cache files
 /tmp/

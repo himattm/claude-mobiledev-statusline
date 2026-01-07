@@ -1,7 +1,60 @@
 #!/bin/bash
-# Claude Code status line script for Android & iOS development
-# Features: context bar, lines changed, multi-device with versions, MCP status
+# Prism - A fast, customizable status line for Claude Code
+# https://github.com/himattm/prism
 
+# CLI mode: handle commands when run directly (not as status line)
+if [ -n "$1" ]; then
+    case "$1" in
+        init)
+            if [ -f ".prism.json" ]; then
+                echo "Error: .prism.json already exists"
+                exit 1
+            fi
+            cat > .prism.json << 'EOF'
+{
+  "icon": "💎",
+  "sections": ["dir", "model", "context", "cost", "git"]
+}
+EOF
+            echo "Created .prism.json"
+            echo "Tip: Add '.prism.local.json' to .gitignore for personal overrides"
+            ;;
+        init-global)
+            mkdir -p ~/.claude
+            if [ -f ~/.claude/prism-config.json ]; then
+                echo "Error: ~/.claude/prism-config.json already exists"
+                exit 1
+            fi
+            cat > ~/.claude/prism-config.json << 'EOF'
+{
+  "sections": ["dir", "model", "context", "cost", "git"]
+}
+EOF
+            echo "Created ~/.claude/prism-config.json"
+            ;;
+        help|--help|-h)
+            echo "Prism - A fast, customizable status line for Claude Code"
+            echo ""
+            echo "Usage:"
+            echo "  prism init         Create .prism.json in current directory"
+            echo "  prism init-global  Create ~/.claude/prism-config.json"
+            echo "  prism help         Show this help"
+            echo ""
+            echo "Config precedence (highest to lowest):"
+            echo "  1. .prism.local.json      Your personal overrides (gitignored)"
+            echo "  2. .prism.json            Repo config (commit for your team)"
+            echo "  3. ~/.claude/prism-config.json  Global defaults"
+            ;;
+        *)
+            echo "Unknown command: $1"
+            echo "Run 'prism help' for usage"
+            exit 1
+            ;;
+    esac
+    exit 0
+fi
+
+# Status line mode: read JSON from stdin
 # ANSI color codes
 CYAN='\033[36m'
 GREEN='\033[32m'
@@ -22,24 +75,23 @@ XCODE_ICON='⚒'
 DEVICE_DIVIDER=' · '
 
 # Cache for config (read once per session)
-CONFIG_CACHE="/tmp/claude-statusline-config"
+CONFIG_CACHE="/tmp/prism-config"
 
 # Cache settings for app versions (expensive queries)
-ANDROID_VERSION_CACHE="/tmp/claude-statusline-android-versions"
-IOS_VERSION_CACHE="/tmp/claude-statusline-ios-versions"
+ANDROID_VERSION_CACHE="/tmp/prism-android-versions"
+IOS_VERSION_CACHE="/tmp/prism-ios-versions"
 APP_VERSION_CACHE_MAX_AGE=30  # seconds
 
-# Cache settings for git info (avoid hammering git)
-GIT_INFO_CACHE="/tmp/claude-statusline-git-info"
-GIT_DIFF_CACHE="/tmp/claude-statusline-git-diff"
+# Cache settings for git info (refreshed only when session is idle)
+GIT_INFO_CACHE="/tmp/prism-git-info"
+GIT_DIFF_CACHE="/tmp/prism-git-diff"
 GIT_CACHE_MAX_AGE=2  # seconds
-GIT_LOCK_FILE="/tmp/claude-statusline-git.lock"
 
 
 # Default section order (gradle/xcode before devices since devices go on new line)
 DEFAULT_SECTIONS='["dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp", "devices"]'
 
-# Load config from .claude-statusline.json (cached per session)
+# Load config from .prism.json (cached per session)
 # Precedence: local override > per-repo config > global config > defaults
 get_config() {
     local cache_key=$(echo "$PROJECT_DIR" | md5 -q)
@@ -54,13 +106,13 @@ get_config() {
     local global_config="{}"
 
     # Load global defaults first
-    if [ -f "$HOME/.claude/statusline-config.json" ]; then
-        global_config=$(cat "$HOME/.claude/statusline-config.json")
+    if [ -f "$HOME/.claude/prism-config.json" ]; then
+        global_config=$(cat "$HOME/.claude/prism-config.json")
     fi
 
     # Per-repo overrides global
-    if [ -f "${PROJECT_DIR}/.claude-statusline.json" ]; then
-        local repo_config=$(cat "${PROJECT_DIR}/.claude-statusline.json")
+    if [ -f "${PROJECT_DIR}/.prism.json" ]; then
+        local repo_config=$(cat "${PROJECT_DIR}/.prism.json")
         # Merge: repo config takes precedence
         config=$(echo "$global_config $repo_config" | jq -s '.[0] * .[1]')
     elif [ -f "${PROJECT_DIR}/.claude-icon" ]; then
@@ -72,8 +124,8 @@ get_config() {
     fi
 
     # Local override takes highest precedence (not committed to git)
-    if [ -f "${PROJECT_DIR}/.claude-statusline.local.json" ]; then
-        local local_config=$(cat "${PROJECT_DIR}/.claude-statusline.local.json")
+    if [ -f "${PROJECT_DIR}/.prism.local.json" ]; then
+        local local_config=$(cat "${PROJECT_DIR}/.prism.local.json")
         config=$(echo "$config $local_config" | jq -s '.[0] * .[1]')
     fi
 
@@ -108,7 +160,23 @@ INPUT=$(cat)
 
 # Debug: uncomment to save raw JSON for troubleshooting
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
-# echo "$INPUT" > "/tmp/statusline-debug-${SESSION_ID}.json"
+# echo "$INPUT" > "/tmp/prism-debug-${SESSION_ID}.json"
+
+# Idle detection: hooks touch this file when Claude stops responding
+IDLE_FILE="/tmp/prism-idle-${SESSION_ID}"
+
+# Check if session is idle (safe to run git)
+# Falls back to "idle" if hooks haven't been set up yet (no idle files exist)
+is_session_idle() {
+    # If our idle file exists, we're idle
+    [ -f "$IDLE_FILE" ] && return 0
+
+    # If ANY idle file exists, hooks are active but we're not idle
+    ls /tmp/prism-idle-* &>/dev/null && return 1
+
+    # No idle files at all = hooks not set up yet, assume idle (backwards compatible)
+    return 0
+}
 
 # Parse all JSON fields in a single jq call
 # Use tab delimiter explicitly to handle spaces in model names (e.g., "Opus 4.5")
@@ -275,6 +343,7 @@ get_git_info_uncached() {
 get_git_info() {
     local cache_file="${GIT_INFO_CACHE}-$(echo "$PROJECT_DIR" | md5 -q)"
 
+    # Always return cache if it exists
     if [ -f "$cache_file" ]; then
         local cache_age=$(($(date +%s) - $(stat -f %m "$cache_file" 2>/dev/null || echo 0)))
         if [ "$cache_age" -lt "$GIT_CACHE_MAX_AGE" ]; then
@@ -283,15 +352,15 @@ get_git_info() {
         fi
     fi
 
-    # Use flock to prevent concurrent git access across instances
-    # Non-blocking (-n) so we don't hang - just return cached/empty if can't get lock
-    (
-        if flock -n 200 2>/dev/null; then
-            local info=$(get_git_info_uncached)
-            echo "$info" > "$cache_file"
-        fi
-    ) 200>"$GIT_LOCK_FILE"
+    # Only refresh git info when session is idle (Claude not actively responding)
+    if ! is_session_idle; then
+        cat "$cache_file" 2>/dev/null
+        return
+    fi
 
+    # Session is idle - safe to run git
+    local info=$(get_git_info_uncached)
+    echo "$info" > "$cache_file"
     cat "$cache_file" 2>/dev/null
 }
 
@@ -310,6 +379,7 @@ get_git_diff_stats_uncached() {
 get_git_diff_stats() {
     local cache_file="${GIT_DIFF_CACHE}-$(echo "$PROJECT_DIR" | md5 -q)"
 
+    # Always return cache if it exists and fresh
     if [ -f "$cache_file" ]; then
         local cache_age=$(($(date +%s) - $(stat -f %m "$cache_file" 2>/dev/null || echo 0)))
         if [ "$cache_age" -lt "$GIT_CACHE_MAX_AGE" ]; then
@@ -318,15 +388,15 @@ get_git_diff_stats() {
         fi
     fi
 
-    # Use flock to prevent concurrent git access across instances
-    # Non-blocking (-n) so we don't hang - just return cached/empty if can't get lock
-    (
-        if flock -n 200 2>/dev/null; then
-            local stats=$(get_git_diff_stats_uncached)
-            echo "$stats" > "$cache_file"
-        fi
-    ) 200>"$GIT_LOCK_FILE"
+    # Only refresh git info when session is idle (Claude not actively responding)
+    if ! is_session_idle; then
+        cat "$cache_file" 2>/dev/null || echo "0 0"
+        return
+    fi
 
+    # Session is idle - safe to run git
+    local stats=$(get_git_diff_stats_uncached)
+    echo "$stats" > "$cache_file"
     cat "$cache_file" 2>/dev/null || echo "0 0"
 }
 
@@ -428,7 +498,7 @@ get_android_versions() {
     # Cache is stale or missing
     if [ -f "$ANDROID_VERSION_CACHE" ]; then
         cat "$ANDROID_VERSION_CACHE"
-        if ! pgrep -f "statusline.*android.*refresh" > /dev/null 2>&1; then
+        if ! pgrep -f "prism.*android.*refresh" > /dev/null 2>&1; then
             (refresh_android_version_cache "$serials") &
         fi
     else
@@ -533,7 +603,7 @@ get_ios_simulators() {
     # Cache is stale or missing
     if [ -f "$IOS_VERSION_CACHE" ]; then
         cat "$IOS_VERSION_CACHE"
-        if ! pgrep -f "statusline.*ios.*refresh" > /dev/null 2>&1; then
+        if ! pgrep -f "prism.*ios.*refresh" > /dev/null 2>&1; then
             (refresh_ios_version_cache) &
         fi
     else

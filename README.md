@@ -1,22 +1,33 @@
-# Claude Code Status Line for Mobile Development
+# 💎 Prism
 
-A custom status line for [Claude Code](https://claude.ai/claude-code) optimized for Android & iOS development.
+A fast, customizable status line for Claude Code.
 
 ![New Session](screenshots/new_session.png)
 
 ![In Progress](screenshots/in_progress.png)
 
 ```
-⌸ my-app · Opus 4.5 · [████████▒▒] 81% · +658 -210 · $15.14 · main*+ · 𓃰3 · ⚒ · mcp:2
-⬢ emulator-5560:6.89 · ⬡ emulator-5562:6.89 ·   iPhone 15:6.89
+💎 my-app · Opus 4.5 · [████████▒▒] 81% · +658 -210 · $15.14 · main*+ · 𓃰3 · ⚒ · mcp:2
+⬢ emulator-5560:6.89 · ⬡ emulator-5562:6.89 ·   iPhone 15:6.89
 ```
 
 ## Quick Start
 
-1. **Download the script:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/himattm/prism/main/install.sh | bash
+```
+
+Then restart Claude Code or start a new session.
+
+<details>
+<summary>Manual installation</summary>
+
+1. **Download the scripts:**
    ```bash
-   curl -o ~/.claude/statusline.sh https://raw.githubusercontent.com/himattm/claude-mobiledev-statusline/main/statusline.sh
-   chmod +x ~/.claude/statusline.sh
+   curl -o ~/.claude/prism.sh https://raw.githubusercontent.com/himattm/prism/main/prism.sh
+   curl -o ~/.claude/prism-idle-hook.sh https://raw.githubusercontent.com/himattm/prism/main/prism-idle-hook.sh
+   curl -o ~/.claude/prism-busy-hook.sh https://raw.githubusercontent.com/himattm/prism/main/prism-busy-hook.sh
+   chmod +x ~/.claude/prism*.sh
    ```
 
 2. **Enable in Claude Code** (`~/.claude/settings.json`):
@@ -24,12 +35,18 @@ A custom status line for [Claude Code](https://claude.ai/claude-code) optimized 
    {
      "statusLine": {
        "type": "command",
-       "command": "$HOME/.claude/statusline.sh"
+       "command": "$HOME/.claude/prism.sh"
+     },
+     "hooks": {
+       "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "$HOME/.claude/prism-busy-hook.sh"}]}],
+       "Stop": [{"hooks": [{"type": "command", "command": "$HOME/.claude/prism-idle-hook.sh"}]}]
      }
    }
    ```
 
 3. **Restart Claude Code** or start a new session.
+
+</details>
 
 ## Let Claude Set It Up
 
@@ -37,23 +54,59 @@ Copy one of these prompts into Claude Code:
 
 **Full installation:**
 ```
-Install the mobile dev status line from https://github.com/himattm/claude-mobiledev-statusline
-
-1. Download statusline.sh to ~/.claude/statusline.sh
-2. Update my ~/.claude/settings.json to enable the status line
-3. Ask me which icon I'd like for this repo (suggest some options) and create .claude-statusline.json
+Install Prism from https://github.com/himattm/prism - run the install script and configure a .prism.json for this repo with an icon of my choice.
 ```
 
 **Per-repo setup only:**
 ```
-Create a .claude-statusline.json for this repo. Suggest some icon options for me to choose from, then configure my Android package name and iOS bundle ID.
+Create a .prism.json for this repo. Suggest some icon options for me to choose from, then configure my Android package name and iOS bundle ID.
 ```
 
-## Customization
+## Configuration
 
-### Per-Repo Config
+Prism uses a 3-tier config system. Higher tiers override lower tiers:
 
-Create `.claude-statusline.json` in your repo root (committable to git):
+```
+.prism.local.json              ← Your personal overrides (gitignored)
+       ↓ overrides
+.prism.json                    ← Repo config (commit for your team)
+       ↓ overrides
+~/.claude/prism-config.json    ← Your global defaults
+```
+
+### Quick Setup
+
+```bash
+# Create global defaults (all your repos)
+~/.claude/prism.sh init-global
+
+# Create repo config (for this project)
+~/.claude/prism.sh init
+```
+
+Or copy from [examples/](examples/).
+
+### When to Use Each Tier
+
+| Tier | File | Commit? | Use for |
+|------|------|---------|---------|
+| **Global** | `~/.claude/prism-config.json` | No | Your default sections, personal preferences |
+| **Repo** | `.prism.json` | Yes | Team icon, package names, shared settings |
+| **Local** | `.prism.local.json` | No | Personal icon override, machine-specific tweaks |
+
+### Global Config
+
+Your defaults across all repos. Create with `prism.sh init-global`:
+
+```json
+{
+  "sections": ["dir", "model", "context", "cost", "git"]
+}
+```
+
+### Repo Config
+
+Shared team settings. Create with `prism.sh init`:
 
 ```json
 {
@@ -67,30 +120,15 @@ Create `.claude-statusline.json` in your repo root (committable to git):
 }
 ```
 
-### Global Config
-
-Create `~/.claude/statusline-config.json` for defaults across all repos:
-
-```json
-{
-  "sections": ["dir", "model", "context", "cost", "git", "mcp"]
-}
-```
-
 ### Local Overrides
 
-Create `.claude-statusline.local.json` for machine-specific settings that aren't committed:
+Personal tweaks not committed to git. Add `.prism.local.json` to your `.gitignore`:
 
 ```json
 {
   "icon": "🔧"
 }
 ```
-
-**Config precedence (highest to lowest):**
-1. `.claude-statusline.local.json` - local overrides (gitignored)
-2. `.claude-statusline.json` - per-repo config (committed)
-3. `~/.claude/statusline-config.json` - global defaults
 
 ### Sections
 
@@ -106,7 +144,7 @@ Available: `dir`, `model`, `context`, `linesChanged`, `cost`, `git`, `gradle`, `
 
 ### Full Example Config
 
-A complete `.claude-statusline.json` with all available options:
+A complete `.prism.json` with all available options:
 
 ```json
 {
@@ -144,7 +182,7 @@ A complete `.claude-statusline.json` with all available options:
 | **Code Stats** | Uncommitted lines changed via git diff (`+658 -210`) and session cost (`$15.14`) |
 | **Git** | Branch with dirty indicators (`*` staged, `**` unstaged, `+` untracked) |
 | **Android** | Device list with app versions, `⬢` targeted / `⬡` non-targeted |
-| **iOS** | Simulator list with app versions,  Apple logo icon |
+| **iOS** | Simulator list with app versions,  Apple logo icon |
 | **Gradle** | `𓃰3` daemons running, `𓃰?` cold start expected |
 | **Xcode** | `⚒2` builds running |
 | **MCP** | `mcp:2` servers configured |
@@ -184,7 +222,7 @@ The directory section shows where Claude was started, with smart handling when y
 - Verify app is installed: `adb shell pm list packages | grep yourapp`
 
 **Config changes not showing**
-- Config is cached per-session. Start new session or: `rm /tmp/claude-statusline-config-*`
+- Config is cached per-session. Start new session or: `rm /tmp/prism-config-*`
 
 **Git info seems stale**
 - Git branch/status and diff stats are cached for 2 seconds to avoid blocking other git operations
@@ -197,6 +235,18 @@ The directory section shows where Claude was started, with smart handling when y
 - `jq` - JSON parsing
 - `adb` - Android device detection (optional)
 - `xcrun simctl` - iOS simulator detection (macOS only, optional)
+
+## Development
+
+```bash
+# Run tests
+./test.sh
+
+# Test CLI commands
+./prism.sh help
+./prism.sh init
+./prism.sh init-global
+```
 
 ## License
 
