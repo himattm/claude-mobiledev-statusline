@@ -1,5 +1,6 @@
 # Local config overrides (not committed)
 .claude/prism.local.json
+.claude/settings.local.json
 
 # Cache files
 /tmp/
