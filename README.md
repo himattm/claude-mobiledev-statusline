@@ -2,9 +2,7 @@
 
 A fast, customizable, and colorful status line for Claude Code.
 
-![New Session](screenshots/new_session.png)
-
-![In Progress](screenshots/in_progress.png)
+![Example](screenshots/example.png)
 
 ## Quick Start
 
