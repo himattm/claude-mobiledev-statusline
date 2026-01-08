@@ -140,104 +140,144 @@ Shows **actionable** usage - percentage of capacity before autocompact triggers:
 | `mcp` | MCP server count | `mcp:2` |
 | `update` | Update indicator | `⬆` |
 
-## Writing Plugins
+## Contributing Plugins
 
-Plugins are scripts that receive JSON on stdin and output formatted text.
+Plugins are native Go for performance. Community plugins are welcome via PR.
 
-### Interface
+### The Interface
 
-```
-INPUT:  JSON on stdin (context, config, colors)
-OUTPUT: Formatted text on stdout
-EXIT:   0 = show, 0 + empty = hide, non-zero = error
-```
-
-### Input JSON
-
-```json
-{
-  "prism": {
-    "version": "0.2.0",
-    "project_dir": "/path/to/project",
-    "current_dir": "/path/to/project/subdir",
-    "session_id": "abc123",
-    "is_idle": true
-  },
-  "session": {
-    "model": "Opus 4.5",
-    "context_pct": 45,
-    "cost_usd": 1.23,
-    "lines_added": 100,
-    "lines_removed": 50
-  },
-  "config": {
-    "your_plugin": { "option": "value" }
-  },
-  "colors": {
-    "red": "\u001b[31m",
-    "green": "\u001b[32m",
-    "yellow": "\u001b[33m",
-    "blue": "\u001b[34m",
-    "magenta": "\u001b[35m",
-    "cyan": "\u001b[36m",
-    "gray": "\u001b[90m",
-    "dim": "\u001b[2m",
-    "reset": "\u001b[0m"
-  }
+```go
+type NativePlugin interface {
+    Name() string
+    Execute(ctx context.Context, input plugin.Input) (string, error)
+    SetCache(c *cache.Cache)
 }
 ```
 
-### Example: Weather Plugin
+### Example: Minimal Plugin
 
-```bash
-#!/bin/bash
-# ~/.claude/prism-plugins/prism-plugin-weather.sh
+```go
+// internal/plugins/weather.go
+package plugins
 
-INPUT=$(cat)
+import (
+    "context"
+    "fmt"
+    "os/exec"
+    "strings"
 
-# Parse config
-LOCATION=$(echo "$INPUT" | jq -r '.config.weather.location // "New York"')
+    "github.com/himattm/prism/internal/cache"
+    "github.com/himattm/prism/internal/plugin"
+)
 
-# Get colors
-CYAN=$(echo "$INPUT" | jq -r '.colors.cyan')
-RESET=$(echo "$INPUT" | jq -r '.colors.reset')
+type WeatherPlugin struct {
+    cache *cache.Cache
+}
 
-# Only fetch when idle
-IS_IDLE=$(echo "$INPUT" | jq -r '.prism.is_idle')
-[ "$IS_IDLE" != "true" ] && exit 0
+func (p *WeatherPlugin) Name() string {
+    return "weather"
+}
 
-# Fetch and display
-TEMP=$(curl -sf "wttr.in/${LOCATION}?format=%t" 2>/dev/null) || exit 0
-echo -e "${CYAN}${TEMP}${RESET}"
+func (p *WeatherPlugin) SetCache(c *cache.Cache) {
+    p.cache = c
+}
+
+func (p *WeatherPlugin) Execute(ctx context.Context, input plugin.Input) (string, error) {
+    // Skip expensive work when Claude is busy
+    if !input.Prism.IsIdle {
+        if p.cache != nil {
+            if cached, ok := p.cache.Get("weather"); ok {
+                return cached, nil
+            }
+        }
+        return "", nil
+    }
+
+    // Get config (with default)
+    location := "New York"
+    if cfg, ok := input.Config["weather"].(map[string]any); ok {
+        if loc, ok := cfg["location"].(string); ok {
+            location = loc
+        }
+    }
+
+    // Fetch weather
+    cmd := exec.CommandContext(ctx, "curl", "-sf", fmt.Sprintf("wttr.in/%s?format=%%t", location))
+    out, err := cmd.Output()
+    if err != nil {
+        return "", nil
+    }
+
+    // Format with colors
+    cyan := input.Colors["cyan"]
+    reset := input.Colors["reset"]
+    result := fmt.Sprintf("%s%s%s", cyan, strings.TrimSpace(string(out)), reset)
+
+    // Cache for 5 minutes
+    if p.cache != nil {
+        p.cache.Set("weather", result, 5*time.Minute)
+    }
+
+    return result, nil
+}
 ```
 
-Config:
+### Register Your Plugin
 
-```json
-{
-  "sections": ["dir", "model", "context", "weather", "git"],
-  "plugins": {
-    "weather": { "location": "San Francisco" }
-  }
+Add to `internal/plugins/interface.go`:
+
+```go
+func NewRegistry() *Registry {
+    // ...
+    r.registerWithCache(&WeatherPlugin{})  // Add this line
+    return r
+}
+```
+
+### Plugin Input
+
+Your `Execute` method receives:
+
+```go
+type Input struct {
+    Prism   PrismContext           // version, project_dir, session_id, is_idle
+    Session SessionContext         // model, context_pct, cost_usd
+    Config  map[string]any         // your plugin's config from prism.json
+    Colors  map[string]string      // ANSI codes: red, green, yellow, cyan, gray, reset
 }
 ```
 
 ### Best Practices
 
-1. **Cache expensive operations** - Use `/tmp/prism-{plugin}-*` with TTL
-2. **Check `is_idle`** - Only run slow ops when Claude is waiting
-3. **Use provided colors** - Consistent with user's terminal
-4. **Exit cleanly** - Empty output hides section
-5. **Keep it fast** - Target <100ms
+1. **Check `IsIdle`** - Only do expensive work when Claude is waiting for input
+2. **Use the cache** - Avoid redundant work with `p.cache.Get/Set`
+3. **Use provided colors** - `input.Colors["cyan"]` for consistency
+4. **Return empty string to hide** - Don't show section if nothing to display
+5. **Respect context** - Use `ctx` for timeouts, honor cancellation
 
-### Installing Plugins
+### Submit Your PR
+
+1. Fork the repo
+2. Add `internal/plugins/yourplugin.go`
+3. Register in `NewRegistry()`
+4. Add tests in `internal/plugins/yourplugin_test.go`
+5. Update README plugins table
+6. Submit PR
+
+## Script Plugins (Personal Use)
+
+For quick personal plugins, you can use scripts instead:
 
 ```bash
-cp my-plugin.sh ~/.claude/prism-plugins/prism-plugin-myplugin.sh
-chmod +x ~/.claude/prism-plugins/prism-plugin-myplugin.sh
-
-# Then add "myplugin" to sections in config
+# ~/.claude/prism-plugins/prism-plugin-myplugin.sh
+#!/bin/bash
+INPUT=$(cat)
+CYAN=$(echo "$INPUT" | jq -r '.colors.cyan')
+RESET=$(echo "$INPUT" | jq -r '.colors.reset')
+echo -e "${CYAN}hello${RESET}"
 ```
+
+Script plugins receive JSON on stdin with the same structure as native plugins.
 
 ## Development
 
