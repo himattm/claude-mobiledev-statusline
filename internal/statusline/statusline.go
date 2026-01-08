@@ -181,9 +181,14 @@ func (sl *StatusLine) renderContext() string {
 		windowSize = 200000 // Default
 	}
 
-	// Calculate against usable capacity (77.5% of window)
-	// Autocompact reserves 22.5%, so 100% = autocompact triggers
-	usableCapacity := (windowSize * 775) / 1000
+	// Get autocompact buffer from config (default 22.5%)
+	bufferPct := sl.config.GetAutocompactBuffer()
+
+	// Calculate usable capacity (total - buffer)
+	usableCapacity := windowSize
+	if bufferPct > 0 {
+		usableCapacity = int(float64(windowSize) * (100.0 - bufferPct) / 100.0)
+	}
 
 	totalTokens := usage.InputTokens + usage.OutputTokens +
 		usage.CacheCreationTokens + usage.CacheReadTokens
@@ -192,19 +197,20 @@ func (sl *StatusLine) renderContext() string {
 		pct = 100
 	}
 
-	return renderContextBar(pct)
+	return renderContextBar(pct, bufferPct > 0)
 }
 
-func renderContextBar(pct int) string {
-	// 10-char bar: [████░░░░▒▒]
+func renderContextBar(pct int, showBuffer bool) string {
+	// 10-char bar: [████░░░░▒▒] (with buffer) or [████░░░░░░] (without)
 	const barLen = 10
 	filled := (pct * barLen) / 100
 	if filled > barLen {
 		filled = barLen
 	}
 
-	// Warning zone starts at 80%
-	warningStart := 8
+	// Buffer zone is last 2-3 chars (representing ~22.5% of bar)
+	// Only show if autocompact buffer is enabled
+	bufferStart := 8 // Last 2 chars for buffer indicator
 
 	// Choose color based on percentage: white -> yellow -> red
 	var barColor string
@@ -229,7 +235,8 @@ func renderContextBar(pct int) string {
 			if barColor != "" {
 				bar.WriteString(colors.Reset)
 			}
-		} else if i >= warningStart {
+		} else if showBuffer && i >= bufferStart {
+			// Show buffer indicator only if autocompact is enabled
 			bar.WriteString(colors.Gray)
 			bar.WriteString("▒")
 			bar.WriteString(colors.Reset)
@@ -358,8 +365,15 @@ func (sl *StatusLine) calculateContextPct() int {
 		windowSize = 200000
 	}
 
-	// Calculate against usable capacity (77.5% - autocompact reserves 22.5%)
-	usableCapacity := (windowSize * 775) / 1000
+	// Get autocompact buffer from config (default 22.5%)
+	bufferPct := sl.config.GetAutocompactBuffer()
+
+	// Calculate usable capacity (total - buffer)
+	usableCapacity := windowSize
+	if bufferPct > 0 {
+		usableCapacity = int(float64(windowSize) * (100.0 - bufferPct) / 100.0)
+	}
+
 	totalTokens := usage.InputTokens + usage.OutputTokens +
 		usage.CacheCreationTokens + usage.CacheReadTokens
 	pct := (totalTokens * 100) / usableCapacity

@@ -8,9 +8,18 @@ import (
 
 // Config represents the Prism configuration
 type Config struct {
-	Icon     string         `json:"icon,omitempty"`
-	Sections any            `json:"sections,omitempty"` // Can be []string or [][]string
-	Plugins  map[string]any `json:"plugins,omitempty"`
+	Icon              string         `json:"icon,omitempty"`
+	Sections          any            `json:"sections,omitempty"` // Can be []string or [][]string
+	Plugins           map[string]any `json:"plugins,omitempty"`
+	AutocompactBuffer *float64       `json:"autocompactBuffer,omitempty"` // Buffer percentage (default 22.5, set to 0 if disabled)
+}
+
+// GetAutocompactBuffer returns the autocompact buffer percentage (default 22.5)
+func (c Config) GetAutocompactBuffer() float64 {
+	if c.AutocompactBuffer == nil {
+		return 22.5 // Default Claude Code buffer
+	}
+	return *c.AutocompactBuffer
 }
 
 // DefaultSections returns the default section order
@@ -73,6 +82,9 @@ func mergeCfg(base, overlay Config) Config {
 		for k, v := range overlay.Plugins {
 			base.Plugins[k] = v
 		}
+	}
+	if overlay.AutocompactBuffer != nil {
+		base.AutocompactBuffer = overlay.AutocompactBuffer
 	}
 	return base
 }
