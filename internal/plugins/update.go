@@ -207,3 +207,36 @@ func compareVersions(a, b string) int {
 
 	return 0
 }
+
+// OnHook implements Hookable interface for update notifications
+func (p *UpdatePlugin) OnHook(ctx context.Context, hookType HookType, hookCtx HookContext) (string, error) {
+	// Only show update notification on busy (user submitting prompt)
+	if hookType != HookBusy {
+		return "", nil
+	}
+
+	// Check if we've already prompted today
+	promptedFile := filepath.Join(os.TempDir(), "prism-update-prompted")
+	if info, err := os.Stat(promptedFile); err == nil {
+		age := time.Since(info.ModTime())
+		if age < 24*time.Hour {
+			return "", nil // Already prompted today
+		}
+	}
+
+	// Check if update is available from cache
+	cacheData, exists := loadUpdateCache()
+	if !exists || !cacheData.UpdateAvail {
+		return "", nil
+	}
+
+	// Mark as prompted
+	os.WriteFile(promptedFile, []byte{}, 0644)
+
+	// Return notification message (ANSI colors for terminal)
+	cyan := "\033[36m"
+	yellow := "\033[33m"
+	reset := "\033[0m"
+	return fmt.Sprintf("%sPrism update available%s (%s → %s). Run %sprism update%s to upgrade.",
+		cyan, reset, cacheData.LocalVersion, cacheData.RemoteVersion, yellow, reset), nil
+}

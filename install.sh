@@ -87,20 +87,12 @@ else
     fi
 fi
 
-# Download hook scripts
-info "Downloading hook scripts..."
-
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism-idle-hook.sh" -o "$CLAUDE_DIR/prism-idle-hook.sh"
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism-busy-hook.sh" -o "$CLAUDE_DIR/prism-busy-hook.sh"
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism-update-hook.sh" -o "$CLAUDE_DIR/prism-update-hook.sh"
-
-chmod +x "$CLAUDE_DIR/prism-idle-hook.sh"
-chmod +x "$CLAUDE_DIR/prism-busy-hook.sh"
-chmod +x "$CLAUDE_DIR/prism-update-hook.sh"
-
-success "  Downloaded prism-idle-hook.sh"
-success "  Downloaded prism-busy-hook.sh"
-success "  Downloaded prism-update-hook.sh"
+# Clean up old hook scripts if they exist
+if [ -f "$CLAUDE_DIR/prism-idle-hook.sh" ] || [ -f "$CLAUDE_DIR/prism-busy-hook.sh" ] || [ -f "$CLAUDE_DIR/prism-update-hook.sh" ]; then
+    info "Removing old hook scripts (now built into prism binary)..."
+    rm -f "$CLAUDE_DIR/prism-idle-hook.sh" "$CLAUDE_DIR/prism-busy-hook.sh" "$CLAUDE_DIR/prism-update-hook.sh"
+    success "  Cleaned up legacy hook scripts"
+fi
 
 # Update settings.json
 info "Configuring Claude Code settings..."
@@ -119,11 +111,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/prism-busy-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.claude/prism-update-hook.sh"
+            "command": "$HOME/.claude/prism hook busy"
           }
         ]
       }
@@ -133,7 +121,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/prism-idle-hook.sh"
+            "command": "$HOME/.claude/prism hook idle"
           }
         ]
       }
@@ -160,11 +148,7 @@ else
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/prism-busy-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.claude/prism-update-hook.sh"
+            "command": "$HOME/.claude/prism hook busy"
           }
         ]
       }
@@ -174,7 +158,7 @@ else
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/prism-idle-hook.sh"
+            "command": "$HOME/.claude/prism hook idle"
           }
         ]
       }

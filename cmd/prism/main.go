@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/himattm/prism/internal/config"
+	"github.com/himattm/prism/internal/hooks"
 	"github.com/himattm/prism/internal/plugin"
 	"github.com/himattm/prism/internal/statusline"
 )
@@ -41,6 +42,13 @@ func main() {
 
 	case "init-global":
 		handleInitGlobal()
+
+	case "hook":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: prism hook <idle|busy>")
+			os.Exit(1)
+		}
+		handleHook(os.Args[2])
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", os.Args[1])
@@ -171,4 +179,30 @@ func handleInitGlobal() {
 		os.Exit(1)
 	}
 	fmt.Println("Created ~/.claude/prism-config.json")
+}
+
+func handleHook(hookType string) {
+	// Read JSON from stdin (Claude Code provides session info)
+	var input hooks.Input
+	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
+		// Silent fail for hooks - don't break Claude Code
+		// Try to continue without session ID
+		input = hooks.Input{}
+	}
+
+	manager := hooks.NewManager()
+
+	switch hookType {
+	case "idle":
+		if err := manager.HandleIdle(input); err != nil {
+			os.Exit(1)
+		}
+	case "busy":
+		if err := manager.HandleBusy(input); err != nil {
+			os.Exit(1)
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown hook type: %s (use 'idle' or 'busy')\n", hookType)
+		os.Exit(1)
+	}
 }

@@ -58,3 +58,45 @@ func (r *Registry) Has(name string) bool {
 	_, ok := r.plugins[name]
 	return ok
 }
+
+// HookType represents the type of hook event
+type HookType string
+
+const (
+	HookIdle HookType = "idle" // Called when Claude stops responding
+	HookBusy HookType = "busy" // Called when user submits prompt
+)
+
+// HookContext provides context for hook handlers
+type HookContext struct {
+	SessionID string
+}
+
+// Hookable is an optional interface for plugins that want to respond to state changes
+type Hookable interface {
+	// OnHook is called when a hook event occurs
+	// Return value is optional output to display (e.g., notifications)
+	OnHook(ctx context.Context, hookType HookType, hookCtx HookContext) (string, error)
+}
+
+// GetHookablePlugins returns all plugins implementing Hookable
+func (r *Registry) GetHookablePlugins() []Hookable {
+	var hookable []Hookable
+	for _, p := range r.plugins {
+		if h, ok := p.(Hookable); ok {
+			hookable = append(hookable, h)
+		}
+	}
+	return hookable
+}
+
+// RunHooks executes hooks on all hookable plugins sequentially
+func (r *Registry) RunHooks(ctx context.Context, hookType HookType, hookCtx HookContext) []string {
+	var outputs []string
+	for _, h := range r.GetHookablePlugins() {
+		if output, err := h.OnHook(ctx, hookType, hookCtx); err == nil && output != "" {
+			outputs = append(outputs, output)
+		}
+	}
+	return outputs
+}
