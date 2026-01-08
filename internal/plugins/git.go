@@ -88,14 +88,14 @@ func (p *GitPlugin) Execute(ctx context.Context, input plugin.Input) (string, er
 }
 
 func isGitRepo(ctx context.Context, dir string) bool {
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-dir")
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "rev-parse", "--git-dir")
 	cmd.Dir = dir
 	return cmd.Run() == nil
 }
 
 func getGitBranch(ctx context.Context, dir string) string {
 	// Try to get current branch
-	cmd := exec.CommandContext(ctx, "git", "branch", "--show-current")
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "branch", "--show-current")
 	cmd.Dir = dir
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -110,7 +110,7 @@ func getGitBranch(ctx context.Context, dir string) string {
 	}
 
 	// Detached HEAD - get short commit
-	cmd = exec.CommandContext(ctx, "git", "rev-parse", "--short", "HEAD")
+	cmd = exec.CommandContext(ctx, "git", "--no-optional-locks", "rev-parse", "--short", "HEAD")
 	cmd.Dir = dir
 	out.Reset()
 	cmd.Stdout = &out
@@ -123,7 +123,7 @@ func getGitBranch(ctx context.Context, dir string) string {
 }
 
 func getGitDirty(ctx context.Context, dir string) string {
-	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "status", "--porcelain")
 	cmd.Dir = dir
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -182,7 +182,7 @@ func getGitDirty(ctx context.Context, dir string) string {
 
 func getUpstreamStatus(ctx context.Context, dir string) (behind, ahead int) {
 	// Get commits behind upstream
-	cmd := exec.CommandContext(ctx, "git", "rev-list", "--count", "HEAD..@{upstream}")
+	cmd := exec.CommandContext(ctx, "git", "--no-optional-locks", "rev-list", "--count", "HEAD..@{upstream}")
 	cmd.Dir = dir
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -192,7 +192,7 @@ func getUpstreamStatus(ctx context.Context, dir string) (behind, ahead int) {
 	}
 
 	// Get commits ahead of upstream
-	cmd = exec.CommandContext(ctx, "git", "rev-list", "--count", "@{upstream}..HEAD")
+	cmd = exec.CommandContext(ctx, "git", "--no-optional-locks", "rev-list", "--count", "@{upstream}..HEAD")
 	cmd.Dir = dir
 	out.Reset()
 	cmd.Stdout = &out

@@ -270,7 +270,7 @@ func getGitDiffStats(projectDir string) (int, int) {
 		return 0, 0
 	}
 
-	cmd := exec.Command("git", "diff", "--numstat", "HEAD")
+	cmd := exec.Command("git", "--no-optional-locks", "diff", "--numstat", "HEAD")
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
 	if err != nil {
