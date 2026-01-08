@@ -213,6 +213,7 @@ func renderContextBar(pct int, showBuffer bool) string {
 	bufferStart := 8 // Last 2 chars for buffer indicator
 
 	// Choose color based on percentage: white -> yellow -> red
+	// When colored, the entire bar is that color for uniformity
 	var barColor string
 	switch {
 	case pct >= 90:
@@ -224,34 +225,30 @@ func renderContextBar(pct int, showBuffer bool) string {
 	}
 
 	var bar strings.Builder
+
+	// Apply color to entire bar when in warning/critical state
+	if barColor != "" {
+		bar.WriteString(barColor)
+	}
+
 	bar.WriteString("[")
 
 	for i := 0; i < barLen; i++ {
 		if i < filled {
-			if barColor != "" {
-				bar.WriteString(barColor)
-			}
 			bar.WriteString("█")
-			if barColor != "" {
-				bar.WriteString(colors.Reset)
-			}
 		} else if showBuffer && i >= bufferStart {
-			// Show buffer indicator only if autocompact is enabled
-			bar.WriteString(colors.Gray)
 			bar.WriteString("▒")
-			bar.WriteString(colors.Reset)
 		} else {
-			bar.WriteString(colors.Gray)
 			bar.WriteString("░")
-			bar.WriteString(colors.Reset)
 		}
 	}
 
+	bar.WriteString(fmt.Sprintf("] %d%%", pct))
+
 	if barColor != "" {
-		bar.WriteString(fmt.Sprintf("] %s%d%%%s", barColor, pct, colors.Reset))
-	} else {
-		bar.WriteString(fmt.Sprintf("] %d%%", pct))
+		bar.WriteString(colors.Reset)
 	}
+
 	return bar.String()
 }
 
