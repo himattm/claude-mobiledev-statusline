@@ -81,3 +81,63 @@ func (m *Manager) HandleBusy(input Input) error {
 
 	return nil
 }
+
+// HandleSessionStart processes the session start hook
+func (m *Manager) HandleSessionStart(input Input) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	hookCtx := plugins.HookContext{
+		SessionID: input.SessionID,
+	}
+
+	outputs := m.registry.RunHooks(ctx, plugins.HookSessionStart, hookCtx)
+
+	if len(outputs) > 0 {
+		fmt.Print(strings.Join(outputs, "\n"))
+	}
+
+	return nil
+}
+
+// HandleSessionEnd processes the session end hook
+func (m *Manager) HandleSessionEnd(input Input) error {
+	// Clean up idle marker file
+	if input.SessionID != "" {
+		idleFile := filepath.Join(os.TempDir(), fmt.Sprintf("prism-idle-%s", input.SessionID))
+		os.Remove(idleFile)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	hookCtx := plugins.HookContext{
+		SessionID: input.SessionID,
+	}
+
+	outputs := m.registry.RunHooks(ctx, plugins.HookSessionEnd, hookCtx)
+
+	if len(outputs) > 0 {
+		fmt.Print(strings.Join(outputs, "\n"))
+	}
+
+	return nil
+}
+
+// HandlePreCompact processes the pre-compact hook
+func (m *Manager) HandlePreCompact(input Input) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	hookCtx := plugins.HookContext{
+		SessionID: input.SessionID,
+	}
+
+	outputs := m.registry.RunHooks(ctx, plugins.HookPreCompact, hookCtx)
+
+	if len(outputs) > 0 {
+		fmt.Print(strings.Join(outputs, "\n"))
+	}
+
+	return nil
+}

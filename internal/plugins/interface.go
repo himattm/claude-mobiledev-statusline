@@ -63,8 +63,12 @@ func (r *Registry) Has(name string) bool {
 type HookType string
 
 const (
-	HookIdle HookType = "idle" // Called when Claude stops responding
-	HookBusy HookType = "busy" // Called when user submits prompt
+	// Core hooks (most useful for plugins)
+	HookIdle         HookType = "idle"          // Stop - Claude finished responding
+	HookBusy         HookType = "busy"          // UserPromptSubmit - User submitted prompt
+	HookSessionStart HookType = "session_start" // SessionStart - Session started/resumed
+	HookSessionEnd   HookType = "session_end"   // SessionEnd - Session ending
+	HookPreCompact   HookType = "pre_compact"   // PreCompact - Before context compaction
 )
 
 // HookContext provides context for hook handlers

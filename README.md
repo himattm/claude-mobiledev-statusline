@@ -43,11 +43,10 @@ Add to `~/.claude/settings.json`:
   },
   "hooks": {
     "UserPromptSubmit": [{"hooks": [
-      {"type": "command", "command": "$HOME/.claude/prism-busy-hook.sh"},
-      {"type": "command", "command": "$HOME/.claude/prism-update-hook.sh"}
+      {"type": "command", "command": "$HOME/.claude/prism hook busy"}
     ]}],
     "Stop": [{"hooks": [
-      {"type": "command", "command": "$HOME/.claude/prism-idle-hook.sh"}
+      {"type": "command", "command": "$HOME/.claude/prism hook idle"}
     ]}]
   }
 }
@@ -254,6 +253,74 @@ type Input struct {
 3. **Use provided colors** - `input.Colors["cyan"]` for consistency
 4. **Return empty string to hide** - Don't show section if nothing to display
 5. **Respect context** - Use `ctx` for timeouts, honor cancellation
+
+### Hooks (Optional)
+
+Plugins can react to Claude Code events by implementing the optional `Hookable` interface:
+
+```go
+type Hookable interface {
+    OnHook(ctx context.Context, hookType HookType, hookCtx HookContext) (string, error)
+}
+```
+
+**Available Hook Types:**
+
+| Hook | CLI Command | Claude Code Event | Use Case |
+|------|-------------|-------------------|----------|
+| `HookIdle` | `prism hook idle` | Stop | Cache refresh, cleanup |
+| `HookBusy` | `prism hook busy` | UserPromptSubmit | Notifications, state reset |
+| `HookSessionStart` | `prism hook session-start` | SessionStart | Initialize, load context |
+| `HookSessionEnd` | `prism hook session-end` | SessionEnd | Cleanup, save state |
+| `HookPreCompact` | `prism hook pre-compact` | PreCompact | Warn user, save important data |
+
+**Example: Cache Invalidation on Idle**
+
+```go
+func (p *MyPlugin) OnHook(ctx context.Context, hookType HookType, hookCtx HookContext) (string, error) {
+    if hookType == HookIdle {
+        // Invalidate cache when Claude becomes idle
+        p.cache.Delete("my-cache-key")
+    }
+    return "", nil
+}
+```
+
+**Example: Notification on Busy**
+
+```go
+func (p *MyPlugin) OnHook(ctx context.Context, hookType HookType, hookCtx HookContext) (string, error) {
+    if hookType == HookBusy {
+        if shouldNotify() {
+            // Return string to display as notification
+            return "\033[36mHey!\033[0m Something happened.", nil
+        }
+    }
+    return "", nil
+}
+```
+
+**HookContext:**
+```go
+type HookContext struct {
+    SessionID string  // Current session ID
+}
+```
+
+**Full settings.json with all hooks:**
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "$HOME/.claude/prism hook busy"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "$HOME/.claude/prism hook idle"}]}],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "$HOME/.claude/prism hook session-start"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "$HOME/.claude/prism hook session-end"}]}],
+    "PreCompact": [{"hooks": [{"type": "command", "command": "$HOME/.claude/prism hook pre-compact"}]}]
+  }
+}
+```
+
+Hooks are optional - plugins that don't implement `Hookable` work exactly as before.
 
 ### Submit Your PR
 

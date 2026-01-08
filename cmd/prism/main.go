@@ -201,8 +201,21 @@ func handleHook(hookType string) {
 		if err := manager.HandleBusy(input); err != nil {
 			os.Exit(1)
 		}
+	case "session-start":
+		if err := manager.HandleSessionStart(input); err != nil {
+			os.Exit(1)
+		}
+	case "session-end":
+		if err := manager.HandleSessionEnd(input); err != nil {
+			os.Exit(1)
+		}
+	case "pre-compact":
+		if err := manager.HandlePreCompact(input); err != nil {
+			os.Exit(1)
+		}
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown hook type: %s (use 'idle' or 'busy')\n", hookType)
+		fmt.Fprintf(os.Stderr, "Unknown hook type: %s\n", hookType)
+		fmt.Fprintln(os.Stderr, "Available hooks: idle, busy, session-start, session-end, pre-compact")
 		os.Exit(1)
 	}
 }
