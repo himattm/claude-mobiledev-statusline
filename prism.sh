@@ -584,9 +584,9 @@ config_get() {
     fi
 }
 
-# Estimated system overhead (system prompt, tools, MCP, agents, memory)
-# Adjust this based on your setup - check /context for actual values
-SYSTEM_OVERHEAD_TOKENS=23000
+# Usable capacity multiplier (77.5% - autocompact reserves 22.5%)
+# We divide window by this to get usable capacity, so 100% = autocompact triggers
+USABLE_CAPACITY_PCT=0.775
 
 # =============================================================================
 # Plugin System
@@ -745,12 +745,12 @@ is_session_idle() {
 
 # Parse all JSON fields in a single jq call
 # Use tab delimiter explicitly to handle spaces in model names (e.g., "Opus 4.5")
-IFS=$'\t' read -r CURRENT_DIR MODEL PCT COST LINES_ADDED LINES_REMOVED PROJECT_DIR < <(echo "$INPUT" | jq -r --argjson overhead "$SYSTEM_OVERHEAD_TOKENS" '[
+IFS=$'\t' read -r CURRENT_DIR MODEL PCT COST LINES_ADDED LINES_REMOVED PROJECT_DIR < <(echo "$INPUT" | jq -r --argjson usable "$USABLE_CAPACITY_PCT" '[
     (.workspace.current_dir // ""),
     .model.display_name,
     (if .context_window.current_usage then
-        # Add estimated overhead (system prompt, tools, MCP, agents, memory)
-        (((.context_window.current_usage.input_tokens + .context_window.current_usage.output_tokens + .context_window.current_usage.cache_creation_input_tokens + .context_window.current_usage.cache_read_input_tokens + $overhead) * 100 / .context_window.context_window_size) | floor)
+        # Calculate against usable capacity (77.5%) - 100% means autocompact triggers
+        ((.context_window.current_usage.input_tokens + .context_window.current_usage.output_tokens + .context_window.current_usage.cache_creation_input_tokens + .context_window.current_usage.cache_read_input_tokens) * 100 / (.context_window.context_window_size * $usable) | floor | if . > 100 then 100 else . end)
     else 0 end),
     (.cost.total_cost_usd // 0 | . * 100 | floor / 100),
     (.cost.total_lines_added // 0),

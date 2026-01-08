@@ -181,11 +181,16 @@ func (sl *StatusLine) renderContext() string {
 		windowSize = 200000 // Default
 	}
 
-	// Calculate percentage with overhead estimate
-	const overhead = 10000
+	// Calculate against usable capacity (77.5% of window)
+	// Autocompact reserves 22.5%, so 100% = autocompact triggers
+	usableCapacity := (windowSize * 775) / 1000
+
 	totalTokens := usage.InputTokens + usage.OutputTokens +
-		usage.CacheCreationTokens + usage.CacheReadTokens + overhead
-	pct := (totalTokens * 100) / windowSize
+		usage.CacheCreationTokens + usage.CacheReadTokens
+	pct := (totalTokens * 100) / usableCapacity
+	if pct > 100 {
+		pct = 100
+	}
 
 	return renderContextBar(pct)
 }
@@ -353,11 +358,15 @@ func (sl *StatusLine) calculateContextPct() int {
 		windowSize = 200000
 	}
 
-	const overhead = 10000
+	// Calculate against usable capacity (77.5% - autocompact reserves 22.5%)
+	usableCapacity := (windowSize * 775) / 1000
 	totalTokens := usage.InputTokens + usage.OutputTokens +
-		usage.CacheCreationTokens + usage.CacheReadTokens + overhead
-
-	return (totalTokens * 100) / windowSize
+		usage.CacheCreationTokens + usage.CacheReadTokens
+	pct := (totalTokens * 100) / usableCapacity
+	if pct > 100 {
+		pct = 100
+	}
+	return pct
 }
 
 func (sl *StatusLine) getPluginConfig(name string) map[string]any {
