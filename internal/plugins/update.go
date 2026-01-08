@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +16,7 @@ import (
 )
 
 const (
-	updateCheckURL  = "https://raw.githubusercontent.com/himattm/prism/main/prism.sh"
+	updateCheckURL  = "https://api.github.com/repos/himattm/prism/releases/latest"
 	updateCacheTTL  = 24 * time.Hour
 	updateCacheFile = "prism-update-check"
 )
@@ -29,7 +28,8 @@ type UpdatePlugin struct {
 
 type updateCache struct {
 	CheckedAt     int64  `json:"checked_at"`
-	LatestVersion string `json:"latest_version"`
+	LocalVersion  string `json:"local_version"`
+	RemoteVersion string `json:"remote_version"`
 	UpdateAvail   bool   `json:"update_available"`
 }
 
@@ -98,10 +98,11 @@ func (p *UpdatePlugin) Execute(ctx context.Context, input plugin.Input) (string,
 	currentVersion := input.Prism.Version
 	updateAvail := compareVersions(currentVersion, latestVersion) < 0
 
-	// Save to cache
+	// Save to cache (format compatible with prism-update-hook.sh)
 	saveUpdateCache(updateCache{
 		CheckedAt:     time.Now().Unix(),
-		LatestVersion: latestVersion,
+		LocalVersion:  currentVersion,
+		RemoteVersion: latestVersion,
 		UpdateAvail:   updateAvail,
 	})
 
@@ -122,6 +123,7 @@ func fetchLatestVersion(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Do(req)
@@ -134,19 +136,21 @@ func fetchLatestVersion(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	// Read first 2KB to find VERSION
-	buf := make([]byte, 2048)
-	n, _ := resp.Body.Read(buf)
-	content := string(buf[:n])
+	// Parse GitHub releases API response
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", err
+	}
 
-	// Extract VERSION="x.y.z"
-	re := regexp.MustCompile(`VERSION="([0-9]+\.[0-9]+\.[0-9]+)"`)
-	matches := re.FindStringSubmatch(content)
-	if len(matches) < 2 {
+	// Strip leading 'v' if present (v0.2.0 -> 0.2.0)
+	version := strings.TrimPrefix(release.TagName, "v")
+	if version == "" {
 		return "", fmt.Errorf("version not found")
 	}
 
-	return matches[1], nil
+	return version, nil
 }
 
 func loadUpdateCache() (updateCache, bool) {
