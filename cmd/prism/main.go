@@ -9,9 +9,8 @@ import (
 	"github.com/himattm/prism/internal/hooks"
 	"github.com/himattm/prism/internal/plugin"
 	"github.com/himattm/prism/internal/statusline"
+	"github.com/himattm/prism/internal/version"
 )
-
-const Version = "0.2.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -23,7 +22,7 @@ func main() {
 	// CLI mode
 	switch os.Args[1] {
 	case "version", "--version", "-v":
-		fmt.Printf("Prism %s (Go)\n", Version)
+		fmt.Printf("Prism %s (Go)\n", version.Version)
 
 	case "help", "--help", "-h":
 		printHelp()
@@ -98,7 +97,7 @@ Config precedence (highest to lowest):
   1. .claude/prism.local.json    Your personal overrides (gitignored)
   2. .claude/prism.json          Repo config (commit for your team)
   3. ~/.claude/prism-config.json Global defaults
-`, Version)
+`, version.Version)
 }
 
 func handlePluginCommand(args []string) {
@@ -161,7 +160,7 @@ func handleUpdate() {
 func handleCheckUpdate() {
 	fmt.Println("Checking for Prism updates...")
 	// TODO: Implement check-update logic
-	fmt.Printf("Local version:  %s\n", Version)
+	fmt.Printf("Local version:  %s\n", version.Version)
 	fmt.Println("Check-update functionality coming soon")
 }
 

@@ -14,9 +14,8 @@ import (
 	"github.com/himattm/prism/internal/config"
 	"github.com/himattm/prism/internal/plugin"
 	"github.com/himattm/prism/internal/plugins"
+	"github.com/himattm/prism/internal/version"
 )
-
-const Version = "0.2.0"
 
 // StatusLine handles rendering the status line
 type StatusLine struct {
@@ -295,7 +294,7 @@ func (sl *StatusLine) runPlugin(name string) string {
 	// Build plugin input
 	input := plugin.Input{
 		Prism: plugin.PrismContext{
-			Version:    Version,
+			Version:    version.Version,
 			ProjectDir: sl.input.Workspace.ProjectDir,
 			CurrentDir: sl.input.Workspace.CurrentDir,
 			SessionID:  sl.input.SessionID,
