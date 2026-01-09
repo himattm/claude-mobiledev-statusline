@@ -131,14 +131,12 @@ func (sl *StatusLine) renderSection(section string) string {
 		return sl.renderCost()
 	case "git":
 		return sl.runPlugin("git")
+	case "worktree":
+		return sl.runPlugin("worktree")
 	case "android_devices":
 		return sl.runPlugin("android_devices")
 	case "devices":
 		return sl.runPlugin("devices") // legacy alias
-	case "gradle":
-		return sl.runPlugin("gradle")
-	case "xcode":
-		return sl.runPlugin("xcode")
 	default:
 		// Try to run as plugin
 		return sl.runPlugin(section)

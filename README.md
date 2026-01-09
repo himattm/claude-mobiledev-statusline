@@ -152,6 +152,7 @@ Shows **actionable** usage - percentage of capacity before autocompact triggers:
 | Plugin | Description | Example |
 |--------|-------------|---------|
 | `git` | Branch, dirty, upstream | `main*+2 ⇣3⇡1` |
+| `worktree` | Git worktree indicator | `⌂ feature-branch` |
 | `android_devices` | Connected Android devices | `⬡ Pixel 6 (14)` |
 | `update` | Auto-update + indicator | `⬆` (yellow when update available) |
 
