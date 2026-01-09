@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/himattm/prism/internal/colors"
 	"github.com/himattm/prism/internal/config"
 	"github.com/himattm/prism/internal/hooks"
 	"github.com/himattm/prism/internal/plugin"
@@ -53,6 +54,9 @@ func main() {
 		}
 		handleHook(os.Args[2])
 
+	case "refract":
+		handleRefract()
+
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", os.Args[1])
 		fmt.Fprintln(os.Stderr, "Run 'prism help' for usage")
@@ -88,6 +92,7 @@ Usage:
   prism update                Check for Prism updates and install
   prism check-update          Check for Prism updates (no install)
   prism version               Show version
+  prism refract               Show available colors with prism animation
   prism help                  Show this help
 
 Plugin commands:
@@ -272,5 +277,142 @@ func handleHook(hookType string) {
 		fmt.Fprintf(os.Stderr, "Unknown hook type: %s\n", hookType)
 		fmt.Fprintln(os.Stderr, "Available hooks: idle, busy, session-start, session-end, pre-compact")
 		os.Exit(1)
+	}
+}
+
+func handleRefract() {
+	colorMap := colors.ColorMap()
+	reset := colorMap["reset"]
+
+	// Clear screen
+	fmt.Print("\033[2J\033[H")
+
+	// Animate the prism refraction
+	animatePrism(colorMap)
+
+	// Group colors by category
+	categories := map[string][]string{
+		"Reds":        {"maroon", "dark_red", "crimson", "coral", "salmon", "rose", "hot_pink", "deep_pink", "pink", "light_pink"},
+		"Oranges":     {"tangerine", "dark_orange", "orange", "light_orange", "peach"},
+		"Yellows":     {"olive", "gold", "khaki", "light_yellow"},
+		"Greens":      {"dark_green", "forest_green", "sea_green", "emerald", "lime_green", "lime", "spring_green", "mint", "light_green", "pale_green"},
+		"Teals/Cyans": {"teal", "dark_cyan", "turquoise", "aqua", "sky_blue", "light_cyan", "powder_blue"},
+		"Blues":       {"navy", "dark_blue", "medium_blue", "royal_blue", "dodger_blue", "cornflower_blue", "steel_blue", "slate_blue", "light_blue"},
+		"Purples":     {"indigo", "dark_violet", "purple", "violet", "orchid", "plum", "lavender", "mauve"},
+		"Grays":       {"black", "dark_gray", "dim_gray", "gray", "light_gray", "silver", "white"},
+	}
+
+	categoryOrder := []string{"Reds", "Oranges", "Yellows", "Greens", "Teals/Cyans", "Blues", "Purples", "Grays"}
+
+	// Animate colors appearing
+	for i, category := range categoryOrder {
+		colorNames := categories[category]
+
+		// Category header with matching color
+		headerColor := getHeaderColor(category, colorMap)
+		fmt.Printf("%s%s%s\n", headerColor, category, reset)
+
+		// Print colors in rows of 5
+		for j, name := range colorNames {
+			if code, ok := colorMap[name]; ok {
+				fmt.Printf("  %s██%s %-18s", code, reset, name)
+				if (j+1)%5 == 0 {
+					fmt.Println()
+				}
+			}
+			time.Sleep(15 * time.Millisecond)
+		}
+		if len(colorNames)%5 != 0 {
+			fmt.Println()
+		}
+
+		if i < len(categoryOrder)-1 {
+			fmt.Println()
+		}
+	}
+
+	fmt.Println()
+
+	// Print total count with rainbow effect
+	countText := fmt.Sprintf("✨ %d colors available", len(colorMap)-1)
+	rainbow := []string{colorMap["red"], colorMap["orange"], colorMap["yellow"], colorMap["green"], colorMap["cyan"], colorMap["blue"], colorMap["purple"]}
+	for i, c := range countText {
+		fmt.Printf("%s%c%s", rainbow[i%len(rainbow)], c, reset)
+		time.Sleep(20 * time.Millisecond)
+	}
+	fmt.Println()
+}
+
+func animatePrism(colorMap map[string]string) {
+	reset := colorMap["reset"]
+	white := colorMap["bright_white"]
+	dim := colorMap["dim"]
+
+	// Spectrum colors for the rainbow beam (7 colors)
+	spectrum := []string{
+		colorMap["red"],
+		colorMap["orange"],
+		colorMap["yellow"],
+		colorMap["green"],
+		colorMap["cyan"],
+		colorMap["blue"],
+		colorMap["purple"],
+	}
+
+	// Simple animation - just draw the final frame with slight delays
+	// All 7 rays emerge from the prism edges (red at top, purple at base)
+	fmt.Printf("                                   %s◇%s%s━━━━━━━▶%s\n", dim, reset, spectrum[0], reset)
+	time.Sleep(50 * time.Millisecond)
+	fmt.Printf("                                  %s/ \\%s%s━━━━━━▶%s\n", dim, reset, spectrum[1], reset)
+	time.Sleep(50 * time.Millisecond)
+	fmt.Printf("                                 %s/   \\%s%s━━━━━▶%s\n", dim, reset, spectrum[2], reset)
+	time.Sleep(50 * time.Millisecond)
+	fmt.Printf("%s━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━▶%s/     \\%s%s━━━━▶%s\n", white, dim, reset, spectrum[3], reset)
+	time.Sleep(50 * time.Millisecond)
+	fmt.Printf("                               %s/       \\%s%s━━━▶%s\n", dim, reset, spectrum[4], reset)
+	time.Sleep(50 * time.Millisecond)
+	fmt.Printf("                              %s/         \\%s%s━━▶%s\n", dim, reset, spectrum[5], reset)
+	time.Sleep(50 * time.Millisecond)
+	fmt.Printf("                             %s/───────────\\%s%s━▶%s\n", dim, reset, spectrum[6], reset)
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Title with rainbow gradient
+	fmt.Println()
+	title := "P R I S M   C O L O R S"
+	for i, c := range title {
+		if c == ' ' {
+			fmt.Print(" ")
+		} else {
+			fmt.Printf("%s%c%s", spectrum[i%len(spectrum)], c, reset)
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	fmt.Println()
+	fmt.Println()
+
+	time.Sleep(300 * time.Millisecond)
+}
+
+func getHeaderColor(category string, colorMap map[string]string) string {
+	switch category {
+	case "Reds":
+		return colorMap["crimson"]
+	case "Oranges":
+		return colorMap["orange"]
+	case "Yellows":
+		return colorMap["gold"]
+	case "Greens":
+		return colorMap["emerald"]
+	case "Teals/Cyans":
+		return colorMap["turquoise"]
+	case "Blues":
+		return colorMap["dodger_blue"]
+	case "Purples":
+		return colorMap["purple"]
+	case "Grays":
+		return colorMap["light_gray"]
+	default:
+		return colorMap["white"]
 	}
 }

@@ -77,8 +77,9 @@ func (p *AndroidPlugin) Execute(ctx context.Context, input plugin.Input) (string
 		return "", nil
 	}
 
-	// Format output
-	green := input.Colors["green"]
+	// Format output (dim emerald green for Android devices)
+	dim := input.Colors["dim"]
+	green := input.Colors["emerald"]
 	gray := input.Colors["gray"]
 	reset := input.Colors["reset"]
 
@@ -86,15 +87,18 @@ func (p *AndroidPlugin) Execute(ctx context.Context, input plugin.Input) (string
 	for _, serial := range serials {
 		// Get display string based on config
 		display := getDeviceDisplay(ctx, serial, cfg.Display)
-		deviceStr := green + "⬡" + reset + " " + display
+
+		// Color the entire device entry uniformly (dim + emerald)
+		deviceStr := dim + green + "⬡ " + display
 
 		// Look up app version if packages configured
 		if len(cfg.Packages) > 0 {
 			if version := getAppVersion(ctx, serial, cfg.Packages); version != "" {
-				deviceStr += " " + gray + version + reset
+				deviceStr += " " + gray + version + green
 			}
 		}
 
+		deviceStr += reset
 		parts = append(parts, deviceStr)
 	}
 
