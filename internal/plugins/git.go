@@ -25,6 +25,14 @@ func (p *GitPlugin) SetCache(c *cache.Cache) {
 	p.cache = c
 }
 
+// OnHook invalidates git cache when Claude becomes idle (fresh data on next render)
+func (p *GitPlugin) OnHook(ctx context.Context, hookType HookType, hookCtx HookContext) (string, error) {
+	if hookType == HookIdle && p.cache != nil {
+		p.cache.DeleteByPrefix("git:")
+	}
+	return "", nil
+}
+
 func (p *GitPlugin) Execute(ctx context.Context, input plugin.Input) (string, error) {
 	projectDir := input.Prism.ProjectDir
 	if projectDir == "" {
@@ -33,8 +41,8 @@ func (p *GitPlugin) Execute(ctx context.Context, input plugin.Input) (string, er
 
 	cacheKey := fmt.Sprintf("git:%s", projectDir)
 
-	// Check cache first (only when not idle - allow refresh when idle)
-	if p.cache != nil && !input.Prism.IsIdle {
+	// Check cache first
+	if p.cache != nil {
 		if cached, ok := p.cache.Get(cacheKey); ok {
 			return cached, nil
 		}
