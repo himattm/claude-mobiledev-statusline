@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/himattm/prism/internal/config"
 	"github.com/himattm/prism/internal/hooks"
 	"github.com/himattm/prism/internal/plugin"
 	"github.com/himattm/prism/internal/statusline"
+	"github.com/himattm/prism/internal/update"
 	"github.com/himattm/prism/internal/version"
 )
 
@@ -152,16 +155,58 @@ func handlePluginCommand(args []string) {
 }
 
 func handleUpdate() {
-	fmt.Println("Checking for Prism updates...")
-	// TODO: Implement update logic
-	fmt.Println("Update functionality coming soon")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	fmt.Println("Checking for updates...")
+
+	info, err := update.Check(ctx)
+	if err != nil {
+		fmt.Printf("Current version: %s\n", version.Version)
+		fmt.Fprintf(os.Stderr, "\nCannot update: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Current version: %s\n", info.CurrentVersion)
+	fmt.Printf("Latest version:  %s\n", info.LatestVersion)
+
+	if !info.UpdateAvailable {
+		fmt.Println("\nYou're already on the latest version!")
+		return
+	}
+
+	fmt.Println("\nDownloading update...")
+
+	if err := update.Download(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Error downloading update: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\nUpdated to %s!\n", info.LatestVersion)
 }
 
 func handleCheckUpdate() {
-	fmt.Println("Checking for Prism updates...")
-	// TODO: Implement check-update logic
-	fmt.Printf("Local version:  %s\n", version.Version)
-	fmt.Println("Check-update functionality coming soon")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	fmt.Println("Checking for updates...")
+
+	info, err := update.Check(ctx)
+	if err != nil {
+		fmt.Printf("Current version: %s\n", version.Version)
+		fmt.Printf("\nCould not check for updates: %v\n", err)
+		fmt.Println("You may be running a development build.")
+		return
+	}
+
+	fmt.Printf("Current version: %s\n", info.CurrentVersion)
+	fmt.Printf("Latest version:  %s\n", info.LatestVersion)
+
+	if info.UpdateAvailable {
+		fmt.Println("\nUpdate available! Run 'prism update' to install.")
+	} else {
+		fmt.Println("\nYou're on the latest version.")
+	}
 }
 
 func handleInit() {
