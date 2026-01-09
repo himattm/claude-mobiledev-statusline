@@ -9,7 +9,7 @@ A fast, customizable status line for Claude Code.
 - **Fast** - Native Go with parallel plugin execution
 - **Actionable context bar** - Shows % until autocompact triggers
 - **Rich git info** - Branch, dirty status, upstream tracking (⇣⇡)
-- **Mobile dev ready** - Android/iOS devices, Gradle/Xcode build status
+- **Mobile dev ready** - Android device info with app version lookup
 - **Extensible** - Write custom plugins in any language
 
 ## Installation
@@ -76,7 +76,7 @@ Prism uses a 3-tier config system (highest priority first):
 ```json
 {
   "icon": "🚀",
-  "sections": ["dir", "model", "context", "cost", "git", "devices"],
+  "sections": ["dir", "model", "context", "cost", "git", "android_devices"],
   "autocompactBuffer": 22.5
 }
 ```
@@ -87,7 +87,7 @@ Prism uses a 3-tier config system (highest priority first):
 {
   "sections": [
     ["dir", "model", "context", "cost", "git"],
-    ["devices"]
+    ["android_devices"]
   ]
 }
 ```
@@ -133,9 +133,7 @@ Shows **actionable** usage - percentage of capacity before autocompact triggers:
 | Plugin | Description | Example |
 |--------|-------------|---------|
 | `git` | Branch, dirty, upstream | `main*+2 ⇣3⇡1` |
-| `devices` | Android/iOS devices | `⬡ Pixel · ⬡ iPhone` |
-| `gradle` | Gradle daemon count | `gradle:3` |
-| `xcode` | Xcode build status | `xcode:building` |
+| `android_devices` | Connected Android devices | `⬡ Pixel 6 (14)` |
 | `mcp` | MCP server count | `mcp:2` |
 | `update` | Update indicator | `⬆` |
 
