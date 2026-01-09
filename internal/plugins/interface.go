@@ -29,6 +29,7 @@ func NewRegistry() *Registry {
 	}
 
 	// Register native plugins with shared cache
+	r.registerWithCache(&AndroidPlugin{})
 	r.registerWithCache(&MCPPlugin{})
 	r.registerWithCache(&GradlePlugin{})
 	r.registerWithCache(&XcodePlugin{})
@@ -57,6 +58,15 @@ func (r *Registry) Get(name string) NativePlugin {
 func (r *Registry) Has(name string) bool {
 	_, ok := r.plugins[name]
 	return ok
+}
+
+// List returns all native plugin names
+func (r *Registry) List() []string {
+	names := make([]string, 0, len(r.plugins))
+	for name := range r.plugins {
+		names = append(names, name)
+	}
+	return names
 }
 
 // HookType represents the type of hook event

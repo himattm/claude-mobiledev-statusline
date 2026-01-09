@@ -131,8 +131,10 @@ func (sl *StatusLine) renderSection(section string) string {
 		return sl.renderCost()
 	case "git":
 		return sl.runPlugin("git")
+	case "android_devices":
+		return sl.runPlugin("android_devices")
 	case "devices":
-		return sl.runPlugin("devices")
+		return sl.runPlugin("devices") // legacy alias
 	case "gradle":
 		return sl.runPlugin("gradle")
 	case "xcode":
@@ -380,11 +382,7 @@ func (sl *StatusLine) calculateContextPct() int {
 }
 
 func (sl *StatusLine) getPluginConfig(name string) map[string]any {
-	if sl.config.Plugins == nil {
-		return map[string]any{name: map[string]any{}}
-	}
-	if cfg, ok := sl.config.Plugins[name]; ok {
-		return map[string]any{name: cfg}
-	}
-	return map[string]any{name: map[string]any{}}
+	// Load from plugin's own config.json, then overlay prism.json overrides
+	pluginCfg := sl.config.LoadPluginConfig(name)
+	return map[string]any{name: pluginCfg}
 }

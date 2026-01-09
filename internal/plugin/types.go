@@ -41,4 +41,5 @@ type Plugin struct {
 	Name     string
 	Path     string
 	Metadata Metadata
+	IsBinary bool // true for compiled binaries, false for scripts
 }

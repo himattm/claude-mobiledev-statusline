@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
@@ -29,7 +31,7 @@ func NewManager() *Manager {
 	}
 }
 
-// Discover finds all installed plugins
+// Discover finds all installed plugins (both scripts and binaries)
 func (m *Manager) Discover() ([]Plugin, error) {
 	if err := os.MkdirAll(m.pluginDir, 0755); err != nil {
 		return nil, err
@@ -41,6 +43,8 @@ func (m *Manager) Discover() ([]Plugin, error) {
 	}
 
 	var plugins []Plugin
+	seen := make(map[string]bool) // Track plugin names to avoid duplicates
+
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -49,24 +53,78 @@ func (m *Manager) Discover() ([]Plugin, error) {
 		if !strings.HasPrefix(name, "prism-plugin-") {
 			continue
 		}
+		// Skip metadata sidecar files
+		if strings.HasSuffix(name, ".json") {
+			continue
+		}
 
 		path := filepath.Join(m.pluginDir, name)
-		meta, err := ParseMetadata(path)
-		if err != nil {
-			// Plugin without proper metadata
-			pluginName := strings.TrimPrefix(name, "prism-plugin-")
-			pluginName = strings.TrimSuffix(pluginName, filepath.Ext(pluginName))
-			meta = Metadata{Name: pluginName}
+		isBinary := !strings.HasSuffix(name, ".sh")
+
+		var meta Metadata
+		var pluginName string
+
+		if isBinary {
+			// Binary plugin: try sidecar JSON first
+			meta = m.loadBinaryMetadata(path)
+			pluginName = strings.TrimPrefix(name, "prism-plugin-")
+		} else {
+			// Script plugin: parse header comments
+			var err error
+			meta, err = ParseMetadata(path)
+			if err != nil {
+				pluginName = strings.TrimPrefix(name, "prism-plugin-")
+				pluginName = strings.TrimSuffix(pluginName, ".sh")
+				meta = Metadata{Name: pluginName}
+			}
+			pluginName = strings.TrimPrefix(name, "prism-plugin-")
+			pluginName = strings.TrimSuffix(pluginName, ".sh")
 		}
+
+		if meta.Name == "" {
+			meta.Name = pluginName
+		}
+
+		// Skip if we've already seen this plugin name
+		if seen[meta.Name] {
+			continue
+		}
+		seen[meta.Name] = true
 
 		plugins = append(plugins, Plugin{
 			Name:     meta.Name,
 			Path:     path,
 			Metadata: meta,
+			IsBinary: isBinary,
 		})
 	}
 
 	return plugins, nil
+}
+
+// loadBinaryMetadata loads metadata from sidecar JSON file
+func (m *Manager) loadBinaryMetadata(binaryPath string) Metadata {
+	jsonPath := binaryPath + ".json"
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		return Metadata{}
+	}
+
+	var meta Metadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return Metadata{}
+	}
+	return meta
+}
+
+// saveBinaryMetadata saves metadata to sidecar JSON file
+func (m *Manager) saveBinaryMetadata(binaryPath string, meta Metadata) error {
+	jsonPath := binaryPath + ".json"
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(jsonPath, data, 0644)
 }
 
 // ParseMetadata extracts metadata from plugin header comments
@@ -142,61 +200,202 @@ func (m *Manager) Execute(p Plugin, input Input, timeout time.Duration) (string,
 	return strings.TrimRight(stdout.String(), "\n"), nil
 }
 
-// List prints all installed plugins
-func (m *Manager) List() {
-	plugins, err := m.Discover()
+// NativePluginInfo describes a built-in plugin for listing
+type NativePluginInfo struct {
+	Name    string
+	Version string
+}
+
+// List prints all installed plugins (native + community)
+func (m *Manager) List(nativePlugins []NativePluginInfo) {
+	// Sort native plugins by name
+	sort.Slice(nativePlugins, func(i, j int) bool {
+		return nativePlugins[i].Name < nativePlugins[j].Name
+	})
+
+	// Get community plugins
+	communityPlugins, err := m.Discover()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error discovering plugins: %v\n", err)
 		return
 	}
 
-	fmt.Println("Installed plugins:")
-	fmt.Println()
-	fmt.Printf("  %-12s %-10s %-20s %s\n", "NAME", "VERSION", "AUTHOR", "SOURCE")
-	fmt.Printf("  %-12s %-10s %-20s %s\n", "----", "-------", "------", "------")
-
-	if len(plugins) == 0 {
-		fmt.Println("  (no plugins installed)")
-	} else {
-		for _, p := range plugins {
-			version := p.Metadata.Version
-			if version == "" {
-				version = "?"
-			}
-			author := p.Metadata.Author
-			if author == "" {
-				author = "-"
-			}
-			source := p.Metadata.Source
-			if source == "" {
-				source = "-"
-			}
-			fmt.Printf("  %-12s %-10s %-20s %s\n", p.Name, version, author, source)
+	// Calculate column widths based on content
+	nameWidth := len("NAME")
+	for _, np := range nativePlugins {
+		if len(np.Name) > nameWidth {
+			nameWidth = len(np.Name)
+		}
+	}
+	for _, p := range communityPlugins {
+		if len(p.Name) > nameWidth {
+			nameWidth = len(p.Name)
 		}
 	}
 
+	fmt.Println("Installed plugins:")
 	fmt.Println()
-	fmt.Printf("Plugin directory: %s\n", m.pluginDir)
+	fmt.Printf("  %-*s %-10s %-10s %s\n", nameWidth, "NAME", "VERSION", "TYPE", "SOURCE")
+	fmt.Printf("  %-*s %-10s %-10s %s\n", nameWidth, "----", "-------", "----", "------")
+
+	// Print native plugins first
+	for _, np := range nativePlugins {
+		fmt.Printf("  %-*s %-10s %-10s %s\n", nameWidth, np.Name, np.Version, "built-in", "prism")
+	}
+
+	// Print community plugins
+	for _, p := range communityPlugins {
+		ver := p.Metadata.Version
+		if ver == "" {
+			ver = "?"
+		}
+		source := p.Metadata.Source
+		if source == "" {
+			source = "-"
+		}
+		pluginType := "script"
+		if p.IsBinary {
+			pluginType = "binary"
+		}
+		fmt.Printf("  %-*s %-10s %-10s %s\n", nameWidth, p.Name, ver, pluginType, source)
+	}
+
+	if len(nativePlugins) == 0 && len(communityPlugins) == 0 {
+		fmt.Println("  (no plugins installed)")
+	}
+
+	fmt.Println()
+	fmt.Printf("Community plugins: %s\n", m.pluginDir)
 }
 
-// Add installs a plugin from a URL
+// Add installs a plugin from a URL (supports both binary and script plugins)
 func (m *Manager) Add(url string) error {
-	// Normalize URL
-	rawURL := url
-	if strings.HasPrefix(url, "https://github.com/") && !strings.Contains(url, "/raw/") {
-		// Convert GitHub repo URL to raw URL
+	// Parse GitHub URL
+	if strings.HasPrefix(url, "https://github.com/") {
 		parts := strings.Split(strings.TrimPrefix(url, "https://github.com/"), "/")
 		if len(parts) >= 2 {
 			owner, repo := parts[0], parts[1]
-			// Try to guess the plugin file name
 			pluginName := strings.TrimPrefix(repo, "prism-plugin-")
-			rawURL = fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/main/prism-plugin-%s.sh", owner, repo, pluginName)
+
+			// Try binary release first
+			if err := m.addBinaryPlugin(owner, repo, pluginName); err == nil {
+				return nil
+			}
+
+			// Fall back to script
+			fmt.Println("No binary release found, trying script...")
+			return m.addScriptPlugin(owner, repo, pluginName)
 		}
 	}
 
-	fmt.Printf("Fetching plugin from: %s\n", rawURL)
+	// Direct URL - try to download as-is
+	return m.addFromDirectURL(url)
+}
 
-	// Download plugin
+// addBinaryPlugin downloads a binary plugin from GitHub releases
+func (m *Manager) addBinaryPlugin(owner, repo, pluginName string) error {
+	osName := runtime.GOOS
+	arch := runtime.GOARCH
+
+	// Try to fetch release info
+	releaseURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	req, err := http.NewRequest("GET", releaseURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("no releases found")
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return err
+	}
+
+	// Find binary for our platform
+	binaryName := fmt.Sprintf("prism-plugin-%s-%s-%s", pluginName, osName, arch)
+	var downloadURL string
+	for _, asset := range release.Assets {
+		if asset.Name == binaryName {
+			downloadURL = asset.BrowserDownloadURL
+			break
+		}
+	}
+
+	if downloadURL == "" {
+		return fmt.Errorf("no binary for %s-%s", osName, arch)
+	}
+
+	fmt.Printf("Downloading %s (%s-%s)...\n", pluginName, osName, arch)
+
+	// Download binary
+	resp, err = client.Get(downloadURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+	}
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// Install
+	if err := os.MkdirAll(m.pluginDir, 0755); err != nil {
+		return err
+	}
+
+	destPath := filepath.Join(m.pluginDir, fmt.Sprintf("prism-plugin-%s", pluginName))
+
+	// Check if already installed
+	if err := m.checkExistingPlugin(destPath, pluginName); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(destPath, content, 0755); err != nil {
+		return fmt.Errorf("failed to write plugin: %w", err)
+	}
+
+	// Save metadata
+	version := strings.TrimPrefix(release.TagName, "v")
+	meta := Metadata{
+		Name:      pluginName,
+		Version:   version,
+		Source:    fmt.Sprintf("https://github.com/%s/%s", owner, repo),
+		UpdateURL: fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo),
+	}
+	m.saveBinaryMetadata(destPath, meta)
+
+	fmt.Printf("Installed: %s v%s (binary)\n", pluginName, version)
+	return nil
+}
+
+// addScriptPlugin downloads a script plugin from GitHub
+func (m *Manager) addScriptPlugin(owner, repo, pluginName string) error {
+	rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/main/prism-plugin-%s.sh", owner, repo, pluginName)
+
+	fmt.Printf("Fetching script from: %s\n", rawURL)
+
 	resp, err := http.Get(rawURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch plugin: %w", err)
@@ -231,41 +430,103 @@ func (m *Manager) Add(url string) error {
 	}
 	tmpFile.Close()
 
-	// Parse metadata to get plugin name
-	meta, err := ParseMetadata(tmpPath)
-	if err != nil || meta.Name == "" {
-		// Try to extract name from URL
-		base := filepath.Base(rawURL)
-		meta.Name = strings.TrimPrefix(base, "prism-plugin-")
-		meta.Name = strings.TrimSuffix(meta.Name, ".sh")
+	// Parse metadata
+	meta, _ := ParseMetadata(tmpPath)
+	if meta.Name == "" {
+		meta.Name = pluginName
 	}
 
-	// Install plugin
+	// Install
 	if err := os.MkdirAll(m.pluginDir, 0755); err != nil {
 		return err
 	}
 
 	destPath := filepath.Join(m.pluginDir, fmt.Sprintf("prism-plugin-%s.sh", meta.Name))
 
-	// Check if already installed
-	if _, err := os.Stat(destPath); err == nil {
-		existingMeta, _ := ParseMetadata(destPath)
-		fmt.Printf("Plugin '%s' already installed (version %s)\n", meta.Name, existingMeta.Version)
-		fmt.Printf("New version: %s\n", meta.Version)
-		fmt.Print("Overwrite? [y/N] ")
-		var response string
-		fmt.Scanln(&response)
-		if strings.ToLower(response) != "y" {
-			fmt.Println("Cancelled.")
-			return nil
-		}
+	if err := m.checkExistingPlugin(destPath, meta.Name); err != nil {
+		return err
 	}
 
 	if err := os.WriteFile(destPath, content, 0755); err != nil {
 		return fmt.Errorf("failed to write plugin: %w", err)
 	}
 
-	fmt.Printf("Installed: %s v%s\n", meta.Name, meta.Version)
+	fmt.Printf("Installed: %s v%s (script)\n", meta.Name, meta.Version)
+	return nil
+}
+
+// addFromDirectURL downloads a plugin from a direct URL
+func (m *Manager) addFromDirectURL(url string) error {
+	fmt.Printf("Fetching plugin from: %s\n", url)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to fetch plugin: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to fetch plugin: HTTP %d", resp.StatusCode)
+	}
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read plugin: %w", err)
+	}
+
+	// Determine if binary or script
+	isScript := bytes.Contains(content, []byte("@prism-plugin")) || bytes.HasPrefix(content, []byte("#!"))
+
+	// Extract name from URL
+	base := filepath.Base(url)
+	pluginName := strings.TrimPrefix(base, "prism-plugin-")
+	pluginName = strings.TrimSuffix(pluginName, ".sh")
+	// Remove platform suffix if present
+	for _, suffix := range []string{"-darwin-arm64", "-darwin-amd64", "-linux-amd64", "-linux-arm64"} {
+		pluginName = strings.TrimSuffix(pluginName, suffix)
+	}
+
+	if err := os.MkdirAll(m.pluginDir, 0755); err != nil {
+		return err
+	}
+
+	var destPath string
+	if isScript {
+		destPath = filepath.Join(m.pluginDir, fmt.Sprintf("prism-plugin-%s.sh", pluginName))
+	} else {
+		destPath = filepath.Join(m.pluginDir, fmt.Sprintf("prism-plugin-%s", pluginName))
+	}
+
+	if err := m.checkExistingPlugin(destPath, pluginName); err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(destPath, content, 0755); err != nil {
+		return fmt.Errorf("failed to write plugin: %w", err)
+	}
+
+	pluginType := "script"
+	if !isScript {
+		pluginType = "binary"
+		// Save basic metadata for binary
+		meta := Metadata{Name: pluginName, Source: url}
+		m.saveBinaryMetadata(destPath, meta)
+	}
+
+	fmt.Printf("Installed: %s (%s)\n", pluginName, pluginType)
+	return nil
+}
+
+// checkExistingPlugin prompts user if plugin already exists
+func (m *Manager) checkExistingPlugin(destPath, pluginName string) error {
+	if _, err := os.Stat(destPath); err == nil {
+		fmt.Printf("Plugin '%s' already installed. Overwrite? [y/N] ", pluginName)
+		var response string
+		fmt.Scanln(&response)
+		if strings.ToLower(response) != "y" {
+			return fmt.Errorf("cancelled")
+		}
+	}
 	return nil
 }
 
@@ -289,24 +550,20 @@ func (m *Manager) CheckUpdates() {
 			continue
 		}
 
-		resp, err := client.Get(p.Metadata.UpdateURL)
+		var remoteVersion string
+		var err error
+
+		if p.IsBinary {
+			remoteVersion, err = m.checkBinaryVersion(p, client)
+		} else {
+			remoteVersion, err = m.checkScriptVersion(p, client)
+		}
+
 		if err != nil {
-			fmt.Printf("  %-12s %-10s (fetch failed)\n", p.Name, p.Metadata.Version)
-			continue
-		}
-		defer resp.Body.Close()
-
-		content, _ := io.ReadAll(resp.Body)
-
-		// Parse remote version
-		re := regexp.MustCompile(`(?m)^#\s*@version\s+(.+)$`)
-		matches := re.FindSubmatch(content)
-		if len(matches) < 2 {
-			fmt.Printf("  %-12s %-10s (no remote version)\n", p.Name, p.Metadata.Version)
+			fmt.Printf("  %-12s %-10s (%s)\n", p.Name, p.Metadata.Version, err)
 			continue
 		}
 
-		remoteVersion := strings.TrimSpace(string(matches[1]))
 		if CompareVersions(p.Metadata.Version, remoteVersion) < 0 {
 			fmt.Printf("  %-12s %-10s -> %-10s \033[33m(update available)\033[0m\n",
 				p.Name, p.Metadata.Version, remoteVersion)
@@ -322,6 +579,51 @@ func (m *Manager) CheckUpdates() {
 	} else {
 		fmt.Println("All plugins are up to date.")
 	}
+}
+
+func (m *Manager) checkBinaryVersion(p Plugin, client *http.Client) (string, error) {
+	req, err := http.NewRequest("GET", p.Metadata.UpdateURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("request failed")
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetch failed")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("no releases")
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", fmt.Errorf("parse failed")
+	}
+
+	return strings.TrimPrefix(release.TagName, "v"), nil
+}
+
+func (m *Manager) checkScriptVersion(p Plugin, client *http.Client) (string, error) {
+	resp, err := client.Get(p.Metadata.UpdateURL)
+	if err != nil {
+		return "", fmt.Errorf("fetch failed")
+	}
+	defer resp.Body.Close()
+
+	content, _ := io.ReadAll(resp.Body)
+
+	re := regexp.MustCompile(`(?m)^#\s*@version\s+(.+)$`)
+	matches := re.FindSubmatch(content)
+	if len(matches) < 2 {
+		return "", fmt.Errorf("no remote version")
+	}
+
+	return strings.TrimSpace(string(matches[1])), nil
 }
 
 // Update updates a specific plugin or all plugins
@@ -358,6 +660,97 @@ func (m *Manager) updatePlugin(p Plugin) error {
 	fmt.Printf("  %s: checking...\n", p.Name)
 
 	client := &http.Client{Timeout: 10 * time.Second}
+
+	if p.IsBinary {
+		return m.updateBinaryPlugin(p, client)
+	}
+	return m.updateScriptPlugin(p, client)
+}
+
+func (m *Manager) updateBinaryPlugin(p Plugin, client *http.Client) error {
+	// UpdateURL for binaries points to GitHub releases API
+	req, err := http.NewRequest("GET", p.Metadata.UpdateURL, nil)
+	if err != nil {
+		fmt.Printf("  %s: request failed\n", p.Name)
+		return nil
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("  %s: fetch failed\n", p.Name)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("  %s: no releases found\n", p.Name)
+		return nil
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		fmt.Printf("  %s: parse failed\n", p.Name)
+		return nil
+	}
+
+	remoteVersion := strings.TrimPrefix(release.TagName, "v")
+	if CompareVersions(p.Metadata.Version, remoteVersion) >= 0 {
+		fmt.Printf("  %s: already up to date (%s)\n", p.Name, p.Metadata.Version)
+		return nil
+	}
+
+	// Find binary for our platform
+	osName := runtime.GOOS
+	arch := runtime.GOARCH
+	binaryName := fmt.Sprintf("prism-plugin-%s-%s-%s", p.Name, osName, arch)
+
+	var downloadURL string
+	for _, asset := range release.Assets {
+		if asset.Name == binaryName {
+			downloadURL = asset.BrowserDownloadURL
+			break
+		}
+	}
+
+	if downloadURL == "" {
+		fmt.Printf("  %s: no binary for %s-%s\n", p.Name, osName, arch)
+		return nil
+	}
+
+	// Download new binary
+	resp, err = client.Get(downloadURL)
+	if err != nil {
+		fmt.Printf("  %s: download failed\n", p.Name)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("  %s: read failed\n", p.Name)
+		return nil
+	}
+
+	if err := os.WriteFile(p.Path, content, 0755); err != nil {
+		return fmt.Errorf("failed to update %s: %w", p.Name, err)
+	}
+
+	// Update metadata
+	p.Metadata.Version = remoteVersion
+	m.saveBinaryMetadata(p.Path, p.Metadata)
+
+	fmt.Printf("  %s: updated %s -> %s\n", p.Name, p.Metadata.Version, remoteVersion)
+	return nil
+}
+
+func (m *Manager) updateScriptPlugin(p Plugin, client *http.Client) error {
 	resp, err := client.Get(p.Metadata.UpdateURL)
 	if err != nil {
 		fmt.Printf("  %s: fetch failed\n", p.Name)
@@ -388,10 +781,20 @@ func (m *Manager) updatePlugin(p Plugin) error {
 	return nil
 }
 
-// Remove uninstalls a plugin
+// Remove uninstalls a plugin (handles both binaries and scripts)
 func (m *Manager) Remove(name string) error {
-	path := filepath.Join(m.pluginDir, fmt.Sprintf("prism-plugin-%s.sh", name))
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	// Try binary first, then script
+	binaryPath := filepath.Join(m.pluginDir, fmt.Sprintf("prism-plugin-%s", name))
+	scriptPath := filepath.Join(m.pluginDir, fmt.Sprintf("prism-plugin-%s.sh", name))
+
+	var path string
+	if _, err := os.Stat(binaryPath); err == nil {
+		path = binaryPath
+		// Also remove sidecar metadata
+		os.Remove(binaryPath + ".json")
+	} else if _, err := os.Stat(scriptPath); err == nil {
+		path = scriptPath
+	} else {
 		return fmt.Errorf("plugin '%s' not found", name)
 	}
 

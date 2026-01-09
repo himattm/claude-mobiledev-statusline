@@ -10,6 +10,7 @@ import (
 	"github.com/himattm/prism/internal/config"
 	"github.com/himattm/prism/internal/hooks"
 	"github.com/himattm/prism/internal/plugin"
+	"github.com/himattm/prism/internal/plugins"
 	"github.com/himattm/prism/internal/statusline"
 	"github.com/himattm/prism/internal/update"
 	"github.com/himattm/prism/internal/version"
@@ -112,7 +113,17 @@ func handlePluginCommand(args []string) {
 
 	switch args[0] {
 	case "list", "ls":
-		pm.List()
+		// Get native plugins from registry
+		registry := plugins.NewRegistry()
+		nativeNames := registry.List()
+		nativePlugins := make([]plugin.NativePluginInfo, len(nativeNames))
+		for i, name := range nativeNames {
+			nativePlugins[i] = plugin.NativePluginInfo{
+				Name:    name,
+				Version: version.Version,
+			}
+		}
+		pm.List(nativePlugins)
 
 	case "add", "install":
 		if len(args) < 2 {

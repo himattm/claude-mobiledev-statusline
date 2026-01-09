@@ -58,6 +58,34 @@ func globalConfigPath() string {
 	return filepath.Join(homeDir, ".claude", "prism-config.json")
 }
 
+// PluginsDir returns the path to the plugins directory
+func PluginsDir() string {
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".claude", "prism-plugins")
+}
+
+// LoadPluginConfig loads a plugin's own config.json and merges with prism.json overrides
+func (c Config) LoadPluginConfig(name string) map[string]any {
+	result := make(map[string]any)
+
+	// First load plugin's own config.json
+	pluginConfigPath := filepath.Join(PluginsDir(), name, "config.json")
+	if data, err := os.ReadFile(pluginConfigPath); err == nil {
+		json.Unmarshal(data, &result)
+	}
+
+	// Then overlay with prism.json plugin config
+	if c.Plugins != nil {
+		if override, ok := c.Plugins[name].(map[string]any); ok {
+			for k, v := range override {
+				result[k] = v
+			}
+		}
+	}
+
+	return result
+}
+
 func loadFile(path string) (Config, error) {
 	var cfg Config
 	data, err := os.ReadFile(path)
