@@ -1,6 +1,6 @@
 # Prism
 
-A fast, customizable status line for Claude Code.
+A fast, customizable, and colorful status line for Claude Code.
 
 ![Example](screenshots/example.png)
 
