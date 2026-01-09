@@ -1,4 +1,4 @@
-# Prism
+# 💎 Prism
 
 A fast, customizable, and colorful status line for Claude Code.
 
