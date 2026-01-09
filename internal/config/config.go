@@ -1,0 +1,250 @@
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
+// Config represents the Prism configuration
+type Config struct {
+	Icon              string         `json:"icon,omitempty"`
+	Sections          any            `json:"sections,omitempty"` // Can be []string or [][]string
+	Plugins           map[string]any `json:"plugins,omitempty"`
+	AutocompactBuffer *float64       `json:"autocompactBuffer,omitempty"` // Buffer percentage (default 22.5, set to 0 if disabled)
+}
+
+// GetAutocompactBuffer returns the autocompact buffer percentage (default 22.5)
+func (c Config) GetAutocompactBuffer() float64 {
+	if c.AutocompactBuffer == nil {
+		return 22.5 // Default Claude Code buffer
+	}
+	return *c.AutocompactBuffer
+}
+
+// DefaultSections returns the default section order
+func DefaultSections() []string {
+	return []string{"dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp", "devices"}
+}
+
+// Load reads and merges configuration from all config files
+func Load(projectDir string) Config {
+	cfg := Config{}
+
+	// Load global config first
+	if globalCfg, err := loadFile(globalConfigPath()); err == nil {
+		cfg = mergeCfg(cfg, globalCfg)
+	}
+
+	// Load project config
+	if projectDir != "" {
+		projectCfgPath := filepath.Join(projectDir, ".claude", "prism.json")
+		if projectCfg, err := loadFile(projectCfgPath); err == nil {
+			cfg = mergeCfg(cfg, projectCfg)
+		}
+
+		// Load local overrides
+		localCfgPath := filepath.Join(projectDir, ".claude", "prism.local.json")
+		if localCfg, err := loadFile(localCfgPath); err == nil {
+			cfg = mergeCfg(cfg, localCfg)
+		}
+	}
+
+	return cfg
+}
+
+func globalConfigPath() string {
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".claude", "prism-config.json")
+}
+
+// PluginsDir returns the path to the plugins directory
+func PluginsDir() string {
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".claude", "prism-plugins")
+}
+
+// LoadPluginConfig loads a plugin's own config.json and merges with prism.json overrides
+func (c Config) LoadPluginConfig(name string) map[string]any {
+	result := make(map[string]any)
+
+	// First load plugin's own config.json
+	pluginConfigPath := filepath.Join(PluginsDir(), name, "config.json")
+	if data, err := os.ReadFile(pluginConfigPath); err == nil {
+		json.Unmarshal(data, &result)
+	}
+
+	// Then overlay with prism.json plugin config
+	if c.Plugins != nil {
+		if override, ok := c.Plugins[name].(map[string]any); ok {
+			for k, v := range override {
+				result[k] = v
+			}
+		}
+	}
+
+	return result
+}
+
+func loadFile(path string) (Config, error) {
+	var cfg Config
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, err
+	}
+	err = json.Unmarshal(data, &cfg)
+	return cfg, err
+}
+
+func mergeCfg(base, overlay Config) Config {
+	if overlay.Icon != "" {
+		base.Icon = overlay.Icon
+	}
+	if overlay.Sections != nil {
+		base.Sections = overlay.Sections
+	}
+	if overlay.Plugins != nil {
+		if base.Plugins == nil {
+			base.Plugins = make(map[string]any)
+		}
+		for k, v := range overlay.Plugins {
+			base.Plugins[k] = v
+		}
+	}
+	if overlay.AutocompactBuffer != nil {
+		base.AutocompactBuffer = overlay.AutocompactBuffer
+	}
+	return base
+}
+
+// GetSections returns the configured sections as a flat list
+func (c Config) GetSections() []string {
+	if c.Sections == nil {
+		return DefaultSections()
+	}
+
+	// Handle both flat and nested section arrays
+	switch v := c.Sections.(type) {
+	case []any:
+		if len(v) == 0 {
+			return DefaultSections()
+		}
+		// Check if first element is a string (flat) or array (nested)
+		if _, ok := v[0].(string); ok {
+			// Flat array
+			sections := make([]string, len(v))
+			for i, s := range v {
+				sections[i] = s.(string)
+			}
+			return sections
+		}
+		// Nested array - flatten first line for now
+		if arr, ok := v[0].([]any); ok {
+			sections := make([]string, len(arr))
+			for i, s := range arr {
+				sections[i] = s.(string)
+			}
+			return sections
+		}
+	}
+
+	return DefaultSections()
+}
+
+// IsMultiline returns true if sections are configured as multi-line
+func (c Config) IsMultiline() bool {
+	if c.Sections == nil {
+		return false
+	}
+	if arr, ok := c.Sections.([]any); ok && len(arr) > 0 {
+		_, isNested := arr[0].([]any)
+		return isNested
+	}
+	return false
+}
+
+// GetAllSectionLines returns sections as lines (for multi-line support)
+func (c Config) GetAllSectionLines() [][]string {
+	if c.Sections == nil {
+		return [][]string{DefaultSections()}
+	}
+
+	switch v := c.Sections.(type) {
+	case []any:
+		if len(v) == 0 {
+			return [][]string{DefaultSections()}
+		}
+		// Check if nested
+		if _, ok := v[0].([]any); ok {
+			lines := make([][]string, len(v))
+			for i, line := range v {
+				if arr, ok := line.([]any); ok {
+					sections := make([]string, len(arr))
+					for j, s := range arr {
+						sections[j] = s.(string)
+					}
+					lines[i] = sections
+				}
+			}
+			return lines
+		}
+		// Flat array
+		sections := make([]string, len(v))
+		for i, s := range v {
+			sections[i] = s.(string)
+		}
+		return [][]string{sections}
+	}
+
+	return [][]string{DefaultSections()}
+}
+
+// Init creates a new project config file
+func Init(dir string) error {
+	configDir := filepath.Join(dir, ".claude")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(configDir, "prism.json")
+	if _, err := os.Stat(configPath); err == nil {
+		return os.ErrExist
+	}
+
+	cfg := Config{
+		Icon:     "💎",
+		Sections: []string{"dir", "model", "context", "cost", "git"},
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(configPath, data, 0644)
+}
+
+// InitGlobal creates a new global config file
+func InitGlobal() error {
+	homeDir, _ := os.UserHomeDir()
+	configDir := filepath.Join(homeDir, ".claude")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(configDir, "prism-config.json")
+	if _, err := os.Stat(configPath); err == nil {
+		return os.ErrExist
+	}
+
+	cfg := Config{
+		Sections: []string{"dir", "model", "context", "cost", "git"},
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(configPath, data, 0644)
+}

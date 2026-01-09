@@ -3,7 +3,8 @@
 # Prism Installer
 # A fast, customizable status line for Claude Code
 #
-# Usage: curl -fsSL https://raw.githubusercontent.com/himattm/prism/main/install.sh | bash
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/himattm/prism/main/install.sh | bash
 #
 
 set -e
@@ -46,36 +47,52 @@ if [ ! -d "$CLAUDE_DIR" ]; then
     mkdir -p "$CLAUDE_DIR"
 fi
 
-# Download scripts
-info "Downloading Prism scripts..."
+# Download Go binary
+info "Downloading Prism binary..."
 
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism.sh" -o "$CLAUDE_DIR/prism.sh"
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism-idle-hook.sh" -o "$CLAUDE_DIR/prism-idle-hook.sh"
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism-busy-hook.sh" -o "$CLAUDE_DIR/prism-busy-hook.sh"
+# Detect OS and architecture
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+case $ARCH in
+    x86_64) ARCH="amd64" ;;
+    arm64|aarch64) ARCH="arm64" ;;
+esac
 
-curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/prism-update-hook.sh" -o "$CLAUDE_DIR/prism-update-hook.sh"
+BINARY_URL="https://github.com/$REPO/releases/latest/download/prism-${OS}-${ARCH}"
 
-chmod +x "$CLAUDE_DIR/prism.sh"
-chmod +x "$CLAUDE_DIR/prism-idle-hook.sh"
-chmod +x "$CLAUDE_DIR/prism-busy-hook.sh"
-chmod +x "$CLAUDE_DIR/prism-update-hook.sh"
+# Use atomic update: download to temp file, then mv (prevents corruption if prism is running)
+if curl -fsSL "$BINARY_URL" -o "$CLAUDE_DIR/prism.new" 2>/dev/null; then
+    chmod +x "$CLAUDE_DIR/prism.new"
+    mv "$CLAUDE_DIR/prism.new" "$CLAUDE_DIR/prism"
+    success "  Downloaded prism binary (${OS}-${ARCH})"
+else
+    rm -f "$CLAUDE_DIR/prism.new" 2>/dev/null
 
-success "  Downloaded prism.sh"
-success "  Downloaded prism-idle-hook.sh"
-success "  Downloaded prism-busy-hook.sh"
-success "  Downloaded prism-update-hook.sh"
+    # Try to build from source if Go is installed
+    if command -v go &> /dev/null; then
+        info "  Pre-built binary not available, building from source..."
+        TMP_DIR=$(mktemp -d)
+        trap "rm -rf $TMP_DIR" EXIT
 
-# Download bundled plugins
-info "Downloading plugins..."
+        curl -fsSL "https://github.com/$REPO/archive/$BRANCH.tar.gz" | tar -xz -C "$TMP_DIR"
+        cd "$TMP_DIR/prism-$BRANCH"
+        go build -o "$CLAUDE_DIR/prism.new" ./cmd/prism/
+        cd - > /dev/null
 
-PLUGIN_DIR="$CLAUDE_DIR/prism-plugins"
-mkdir -p "$PLUGIN_DIR"
+        chmod +x "$CLAUDE_DIR/prism.new"
+        mv "$CLAUDE_DIR/prism.new" "$CLAUDE_DIR/prism"
+        success "  Built prism binary from source"
+    else
+        error "Pre-built binary not available for ${OS}-${ARCH} and Go is not installed to build from source."
+    fi
+fi
 
-for plugin in git gradle xcode mcp devices update; do
-    curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/plugins/${plugin}/prism-plugin-${plugin}.sh" -o "$PLUGIN_DIR/prism-plugin-${plugin}.sh"
-    chmod +x "$PLUGIN_DIR/prism-plugin-${plugin}.sh"
-    success "  Downloaded prism-plugin-${plugin}.sh"
-done
+# Clean up old hook scripts if they exist
+if [ -f "$CLAUDE_DIR/prism-idle-hook.sh" ] || [ -f "$CLAUDE_DIR/prism-busy-hook.sh" ] || [ -f "$CLAUDE_DIR/prism-update-hook.sh" ]; then
+    info "Removing old hook scripts (now built into prism binary)..."
+    rm -f "$CLAUDE_DIR/prism-idle-hook.sh" "$CLAUDE_DIR/prism-busy-hook.sh" "$CLAUDE_DIR/prism-update-hook.sh"
+    success "  Cleaned up legacy hook scripts"
+fi
 
 # Update settings.json
 info "Configuring Claude Code settings..."
@@ -86,7 +103,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
 {
   "statusLine": {
     "type": "command",
-    "command": "$HOME/.claude/prism.sh"
+    "command": "$HOME/.claude/prism"
   },
   "hooks": {
     "UserPromptSubmit": [
@@ -94,11 +111,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/prism-busy-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.claude/prism-update-hook.sh"
+            "command": "$HOME/.claude/prism hook busy"
           }
         ]
       }
@@ -108,7 +121,7 @@ if [ ! -f "$SETTINGS_FILE" ]; then
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/prism-idle-hook.sh"
+            "command": "$HOME/.claude/prism hook idle"
           }
         ]
       }
@@ -127,7 +140,7 @@ else
 {
   "statusLine": {
     "type": "command",
-    "command": "$HOME/.claude/prism.sh"
+    "command": "$HOME/.claude/prism"
   },
   "hooks": {
     "UserPromptSubmit": [
@@ -135,11 +148,7 @@ else
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/prism-busy-hook.sh"
-          },
-          {
-            "type": "command",
-            "command": "$HOME/.claude/prism-update-hook.sh"
+            "command": "$HOME/.claude/prism hook busy"
           }
         ]
       }
@@ -149,7 +158,7 @@ else
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/prism-idle-hook.sh"
+            "command": "$HOME/.claude/prism hook idle"
           }
         ]
       }
@@ -179,10 +188,8 @@ echo -e "  ${DIM}3.${RESET} ~/.claude/prism-config.json ${DIM}Your global defaul
 echo ""
 echo -e "${CYAN}Quick setup:${RESET}"
 echo -e "  ${DIM}# Create global defaults${RESET}"
-echo "  ~/.claude/prism.sh init-global"
+echo "  ~/.claude/prism init-global"
 echo ""
 echo -e "  ${DIM}# Create repo config${RESET}"
-echo "  ~/.claude/prism.sh init"
-echo ""
-echo -e "See examples: ${DIM}https://github.com/himattm/prism/tree/main/examples${RESET}"
+echo "  ~/.claude/prism init"
 echo ""
