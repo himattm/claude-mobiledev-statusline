@@ -109,7 +109,7 @@ Prism uses a 3-tier config system (highest priority first):
 |---------|-------------|---------|
 | `dir` | Project name + subdirectory | `💎 prism/internal` |
 | `model` | Current model | `Opus 4.5` |
-| `context` | Context usage bar | `[████░░░░▒▒] 56%` |
+| `context` | Context usage bar | `████░░░░▒▒ 56%` |
 | `linesChanged` | Uncommitted changes | `+123 -45` |
 | `cost` | Session cost | `$1.23` |
 
@@ -118,9 +118,9 @@ Prism uses a 3-tier config system (highest priority first):
 Shows **actionable** usage - percentage of capacity before autocompact triggers:
 
 ```
-[█████░░░▒▒] 56%
- ^^^^^ ^^^ ^^
- used  free buffer
+█████░░░▒▒ 56%
+
+█ used  ░ free  ▒ buffer
 ```
 
 - **100% = autocompact will trigger**

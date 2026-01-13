@@ -29,8 +29,10 @@ type CostInfo struct {
 
 // ContextInfo contains context window usage
 type ContextInfo struct {
-	CurrentUsage  ContextUsage `json:"current_usage"`
-	ContextWindow int          `json:"context_window_size"`
+	CurrentUsage        ContextUsage `json:"current_usage"`
+	ContextWindow       int          `json:"context_window_size"`
+	UsedPercentage      float64      `json:"used_percentage"`      // New in Claude Code 2.1.6
+	RemainingPercentage float64      `json:"remaining_percentage"` // New in Claude Code 2.1.6
 }
 
 // ContextUsage contains token counts

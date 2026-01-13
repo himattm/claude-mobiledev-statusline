@@ -291,3 +291,175 @@ func TestNew_CreatesStatusLine(t *testing.T) {
 		t.Errorf("session ID not set correctly")
 	}
 }
+
+// TestRenderContextBar_NoBrackets verifies brackets were removed
+func TestRenderContextBar_NoBrackets(t *testing.T) {
+	result := renderContextBar(50, false)
+
+	if strings.Contains(result, "[") || strings.Contains(result, "]") {
+		t.Errorf("context bar should not contain brackets: %s", result)
+	}
+	if !strings.Contains(result, "█") {
+		t.Errorf("context bar should contain filled blocks: %s", result)
+	}
+	if !strings.Contains(result, "50%") {
+		t.Errorf("context bar should contain percentage: %s", result)
+	}
+}
+
+// TestRenderContextBar_Percentages verifies bar fills correctly at different percentages
+func TestRenderContextBar_Percentages(t *testing.T) {
+	tests := []struct {
+		pct          int
+		expectedFill int // number of █ characters
+	}{
+		{0, 0},
+		{10, 1},
+		{50, 5},
+		{100, 10},
+	}
+
+	for _, tt := range tests {
+		result := renderContextBar(tt.pct, false)
+		fillCount := strings.Count(result, "█")
+		if fillCount != tt.expectedFill {
+			t.Errorf("at %d%%, expected %d filled blocks, got %d: %s",
+				tt.pct, tt.expectedFill, fillCount, result)
+		}
+	}
+}
+
+// TestRenderContextBar_BufferZone verifies buffer zone rendering
+func TestRenderContextBar_BufferZone(t *testing.T) {
+	// With buffer enabled, should have ▒ characters at the end
+	withBuffer := renderContextBar(50, true)
+	if !strings.Contains(withBuffer, "▒") {
+		t.Errorf("buffer zone should show ▒ when enabled: %s", withBuffer)
+	}
+
+	// Without buffer, should not have ▒ characters
+	withoutBuffer := renderContextBar(50, false)
+	if strings.Contains(withoutBuffer, "▒") {
+		t.Errorf("buffer zone should not show ▒ when disabled: %s", withoutBuffer)
+	}
+}
+
+// TestRenderContext_UsesNewUsedPercentage verifies Claude Code 2.1.6+ field is used
+func TestRenderContext_UsesNewUsedPercentage(t *testing.T) {
+	sl := &StatusLine{
+		input: Input{
+			Context: ContextInfo{
+				UsedPercentage: 42.0,
+				// Legacy fields would calculate differently
+				CurrentUsage: ContextUsage{
+					InputTokens:  10000,
+					OutputTokens: 10000,
+				},
+				ContextWindow: 200000,
+			},
+		},
+		config: config.Config{},
+	}
+
+	result := sl.renderContext()
+
+	// Should use the new UsedPercentage (42%), not calculated from tokens
+	if !strings.Contains(result, "42%") {
+		t.Errorf("should use UsedPercentage field, got: %s", result)
+	}
+}
+
+// TestRenderContext_UsesRemainingPercentage verifies fallback to remaining_percentage
+func TestRenderContext_UsesRemainingPercentage(t *testing.T) {
+	sl := &StatusLine{
+		input: Input{
+			Context: ContextInfo{
+				UsedPercentage:      0,    // Not provided
+				RemainingPercentage: 70.0, // 100 - 70 = 30% used
+				CurrentUsage: ContextUsage{
+					InputTokens: 50000, // Would calculate to 25%
+				},
+				ContextWindow: 200000,
+			},
+		},
+		config: config.Config{},
+	}
+
+	result := sl.renderContext()
+
+	// Should calculate 100 - 70 = 30%
+	if !strings.Contains(result, "30%") {
+		t.Errorf("should calculate used from remaining (30%%), got: %s", result)
+	}
+}
+
+// TestRenderContext_FallsBackToLegacy verifies legacy calculation when no new fields
+func TestRenderContext_FallsBackToLegacy(t *testing.T) {
+	sl := &StatusLine{
+		input: Input{
+			Context: ContextInfo{
+				UsedPercentage:      0, // Not provided
+				RemainingPercentage: 0, // Not provided
+				CurrentUsage: ContextUsage{
+					InputTokens:  50000,
+					OutputTokens: 0,
+				},
+				ContextWindow: 200000,
+			},
+		},
+		config: config.Config{},
+	}
+
+	result := sl.renderContext()
+
+	// Should fall back to legacy: 50000 / (200000 * 0.775) = 32% (with 22.5% autocompact buffer)
+	if !strings.Contains(result, "32%") {
+		t.Errorf("should fall back to legacy calculation (32%%), got: %s", result)
+	}
+}
+
+// TestCalculateContextPct_PrefersNewFields verifies plugin context pct uses new fields
+func TestCalculateContextPct_PrefersNewFields(t *testing.T) {
+	sl := &StatusLine{
+		input: Input{
+			Context: ContextInfo{
+				UsedPercentage: 75.0,
+				CurrentUsage: ContextUsage{
+					InputTokens: 10000, // Would calculate to 5%
+				},
+				ContextWindow: 200000,
+			},
+		},
+		config: config.Config{},
+	}
+
+	pct := sl.calculateContextPct()
+
+	if pct != 75 {
+		t.Errorf("calculateContextPct should prefer UsedPercentage, got: %d", pct)
+	}
+}
+
+// TestCalculateContextPct_FallsBackToLegacy verifies legacy fallback for plugins
+func TestCalculateContextPct_FallsBackToLegacy(t *testing.T) {
+	sl := &StatusLine{
+		input: Input{
+			Context: ContextInfo{
+				UsedPercentage:      0,
+				RemainingPercentage: 0,
+				CurrentUsage: ContextUsage{
+					InputTokens: 40000,
+				},
+				ContextWindow: 200000,
+			},
+		},
+		config: config.Config{},
+	}
+
+	pct := sl.calculateContextPct()
+
+	// 40000 / (200000 * 0.775) = 25% (with 22.5% autocompact buffer)
+	if pct != 25 {
+		t.Errorf("calculateContextPct should fall back to legacy (25%%), got: %d", pct)
+	}
+}
