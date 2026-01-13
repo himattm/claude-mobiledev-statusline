@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.3.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -25,6 +31,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/setup-go@v5
         with:
@@ -56,5 +64,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: binaries/*
           generate_release_notes: true
