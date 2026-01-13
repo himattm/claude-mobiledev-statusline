@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/himattm/prism/internal/colors"
@@ -197,6 +198,10 @@ func handleUpdate() {
 		fmt.Fprintf(os.Stderr, "Error downloading update: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Clear the update cache so indicator disappears
+	cacheFile := filepath.Join(os.TempDir(), "prism-update-check")
+	os.Remove(cacheFile)
 
 	fmt.Printf("\nUpdated to %s!\n", info.LatestVersion)
 }
