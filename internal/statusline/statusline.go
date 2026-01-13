@@ -176,6 +176,34 @@ func (sl *StatusLine) renderModel() string {
 }
 
 func (sl *StatusLine) renderContext() string {
+	// Get autocompact buffer from config (default 22.5%)
+	bufferPct := sl.config.GetAutocompactBuffer()
+
+	// Check if Claude Code provided the new percentage fields (2.1.6+)
+	// Use used_percentage directly, or calculate from remaining_percentage
+	if sl.input.Context.UsedPercentage > 0 || sl.input.Context.RemainingPercentage > 0 {
+		var pct int
+		if sl.input.Context.UsedPercentage > 0 {
+			pct = int(sl.input.Context.UsedPercentage)
+		} else {
+			// Calculate used from remaining (they should sum to 100)
+			pct = int(100 - sl.input.Context.RemainingPercentage)
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		if pct < 0 {
+			pct = 0
+		}
+		return renderContextBar(pct, bufferPct > 0)
+	}
+
+	// Fall back to legacy calculation for older Claude Code versions
+	pct := sl.calculateContextPctLegacy()
+	return renderContextBar(pct, bufferPct > 0)
+}
+
+func (sl *StatusLine) calculateContextPctLegacy() int {
 	usage := sl.input.Context.CurrentUsage
 	windowSize := sl.input.Context.ContextWindow
 	if windowSize == 0 {
@@ -197,12 +225,12 @@ func (sl *StatusLine) renderContext() string {
 	if pct > 100 {
 		pct = 100
 	}
-
-	return renderContextBar(pct, bufferPct > 0)
+	return pct
 }
 
 func renderContextBar(pct int, showBuffer bool) string {
-	// 10-char bar: [████░░░░▒▒] (with buffer) or [████░░░░░░] (without)
+	// 10-char bar: ████░░░░▒▒ (with buffer) or ████░░░░░░ (without)
+	// No end caps for a cleaner look
 	const barLen = 10
 	filled := (pct * barLen) / 100
 	if filled > barLen {
@@ -232,8 +260,6 @@ func renderContextBar(pct int, showBuffer bool) string {
 		bar.WriteString(barColor)
 	}
 
-	bar.WriteString("[")
-
 	for i := 0; i < barLen; i++ {
 		if i < filled {
 			bar.WriteString("█")
@@ -244,7 +270,7 @@ func renderContextBar(pct int, showBuffer bool) string {
 		}
 	}
 
-	bar.WriteString(fmt.Sprintf("] %d%%", pct))
+	bar.WriteString(fmt.Sprintf(" %d%%", pct))
 
 	if barColor != "" {
 		bar.WriteString(colors.Reset)
@@ -357,28 +383,17 @@ func (sl *StatusLine) runUpdatePlugin() string {
 }
 
 func (sl *StatusLine) calculateContextPct() int {
-	usage := sl.input.Context.CurrentUsage
-	windowSize := sl.input.Context.ContextWindow
-	if windowSize == 0 {
-		windowSize = 200000
+	// Prefer new pre-calculated percentage from Claude Code 2.1.6+
+	if sl.input.Context.UsedPercentage > 0 || sl.input.Context.RemainingPercentage > 0 {
+		pct := int(sl.input.Context.UsedPercentage)
+		if pct > 100 {
+			pct = 100
+		}
+		return pct
 	}
 
-	// Get autocompact buffer from config (default 22.5%)
-	bufferPct := sl.config.GetAutocompactBuffer()
-
-	// Calculate usable capacity (total - buffer)
-	usableCapacity := windowSize
-	if bufferPct > 0 {
-		usableCapacity = int(float64(windowSize) * (100.0 - bufferPct) / 100.0)
-	}
-
-	totalTokens := usage.InputTokens + usage.OutputTokens +
-		usage.CacheCreationTokens + usage.CacheReadTokens
-	pct := (totalTokens * 100) / usableCapacity
-	if pct > 100 {
-		pct = 100
-	}
-	return pct
+	// Fall back to legacy calculation
+	return sl.calculateContextPctLegacy()
 }
 
 func (sl *StatusLine) getPluginConfig(name string) map[string]any {

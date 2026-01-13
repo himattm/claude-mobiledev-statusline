@@ -13,6 +13,7 @@ import (
 
 	"github.com/himattm/prism/internal/cache"
 	"github.com/himattm/prism/internal/plugin"
+	"github.com/himattm/prism/internal/update"
 )
 
 const (
@@ -208,13 +209,63 @@ func compareVersions(a, b string) int {
 	return 0
 }
 
-// OnHook implements Hookable interface for update notifications
+// OnHook implements Hookable interface for auto-update and notifications
 func (p *UpdatePlugin) OnHook(ctx context.Context, hookType HookType, hookCtx HookContext) (string, error) {
-	// Only show update notification on busy (user submitting prompt)
-	if hookType != HookBusy {
+	// Handle auto-install on idle
+	if hookType == HookIdle {
+		return p.handleAutoInstall(hookCtx)
+	}
+
+	// Handle update notification on busy (user submitting prompt)
+	if hookType == HookBusy {
+		return p.handleUpdateNotification()
+	}
+
+	return "", nil
+}
+
+// handleAutoInstall checks for updates and auto-installs if enabled
+func (p *UpdatePlugin) handleAutoInstall(hookCtx HookContext) (string, error) {
+	// Check auto_install config (default: true)
+	autoInstall := true
+	if cfg, ok := hookCtx.Config["update"].(map[string]any); ok {
+		if ai, ok := cfg["auto_install"].(bool); ok {
+			autoInstall = ai
+		}
+	}
+	if !autoInstall {
 		return "", nil
 	}
 
+	// Check if update is available from cache
+	cacheData, exists := loadUpdateCache()
+	if !exists || !cacheData.UpdateAvail {
+		return "", nil
+	}
+
+	// Check if we've already auto-installed this session
+	markerFile := filepath.Join(os.TempDir(), "prism-auto-installed")
+	if _, err := os.Stat(markerFile); err == nil {
+		return "", nil // Already installed this session
+	}
+
+	// Download in background (hook has 5s timeout, download may take longer)
+	go func() {
+		dlCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := update.Download(dlCtx); err == nil {
+			os.WriteFile(markerFile, []byte(cacheData.RemoteVersion), 0644)
+		}
+	}()
+
+	// Return notification that update is starting
+	cyan := "\033[36m"
+	reset := "\033[0m"
+	return fmt.Sprintf("%sPrism auto-updating to %s...%s", cyan, cacheData.RemoteVersion, reset), nil
+}
+
+// handleUpdateNotification shows a one-per-day notification about available updates
+func (p *UpdatePlugin) handleUpdateNotification() (string, error) {
 	// Check if we've already prompted today
 	promptedFile := filepath.Join(os.TempDir(), "prism-update-prompted")
 	if info, err := os.Stat(promptedFile); err == nil {

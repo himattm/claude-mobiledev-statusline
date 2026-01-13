@@ -10,6 +10,7 @@ A fast, customizable, and colorful status line for Claude Code.
 - **Actionable context bar** - Shows % until autocompact triggers
 - **Rich git info** - Branch, dirty status, upstream tracking (⇣⇡)
 - **Mobile dev ready** - Android device info with app version lookup
+- **Auto-updates** - Automatically installs updates when Claude is idle
 - **Extensible** - Write custom plugins in any language
 
 ## Installation
@@ -19,6 +20,24 @@ curl -fsSL https://raw.githubusercontent.com/himattm/prism/main/install.sh | bas
 ```
 
 Restart Claude Code or start a new session.
+
+## Auto-Update
+
+Prism automatically checks for and installs updates when Claude finishes responding. This is enabled by default.
+
+To disable auto-update:
+
+```json
+{
+  "plugins": {
+    "update": {
+      "auto_install": false
+    }
+  }
+}
+```
+
+You can also manually update with `prism update` or check for updates with `prism check-update`.
 
 <details>
 <summary>Manual installation</summary>
@@ -109,7 +128,7 @@ Prism uses a 3-tier config system (highest priority first):
 |---------|-------------|---------|
 | `dir` | Project name + subdirectory | `💎 prism/internal` |
 | `model` | Current model | `Opus 4.5` |
-| `context` | Context usage bar | `[████░░░░▒▒] 56%` |
+| `context` | Context usage bar | `████░░░░▒▒ 56%` |
 | `linesChanged` | Uncommitted changes | `+123 -45` |
 | `cost` | Session cost | `$1.23` |
 
@@ -118,9 +137,9 @@ Prism uses a 3-tier config system (highest priority first):
 Shows **actionable** usage - percentage of capacity before autocompact triggers:
 
 ```
-[█████░░░▒▒] 56%
- ^^^^^ ^^^ ^^
- used  free buffer
+█████░░░▒▒ 56%
+
+█ used  ░ free  ▒ buffer
 ```
 
 - **100% = autocompact will trigger**
@@ -135,7 +154,7 @@ Shows **actionable** usage - percentage of capacity before autocompact triggers:
 | `git` | Branch, dirty, upstream | `main*+2 ⇣3⇡1` |
 | `android_devices` | Connected Android devices | `⬡ Pixel 6 (14)` |
 | `mcp` | MCP server count | `mcp:2` |
-| `update` | Update indicator | `⬆` |
+| `update` | Auto-update + indicator | `⬆` (yellow when update available) |
 
 ## Contributing Plugins
 
