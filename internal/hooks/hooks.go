@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/himattm/prism/internal/config"
 	"github.com/himattm/prism/internal/plugins"
 )
 
@@ -38,17 +39,25 @@ func (m *Manager) HandleIdle(input Input) error {
 		}
 	}
 
-	// 2. Run hooks on all hookable plugins
+	// 2. Load config for plugins
+	cfg := config.Load("")
+	pluginConfig := make(map[string]any)
+	if cfg.Plugins != nil {
+		pluginConfig = cfg.Plugins
+	}
+
+	// 3. Run hooks on all hookable plugins
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	hookCtx := plugins.HookContext{
 		SessionID: input.SessionID,
+		Config:    pluginConfig,
 	}
 
 	outputs := m.registry.RunHooks(ctx, plugins.HookIdle, hookCtx)
 
-	// 3. Print any outputs (for Claude Code to display)
+	// 4. Print any outputs (for Claude Code to display)
 	if len(outputs) > 0 {
 		fmt.Print(strings.Join(outputs, "\n"))
 	}
@@ -64,17 +73,25 @@ func (m *Manager) HandleBusy(input Input) error {
 		os.Remove(idleFile) // Ignore error if doesn't exist
 	}
 
-	// 2. Run hooks on all hookable plugins
+	// 2. Load config for plugins
+	cfg := config.Load("")
+	pluginConfig := make(map[string]any)
+	if cfg.Plugins != nil {
+		pluginConfig = cfg.Plugins
+	}
+
+	// 3. Run hooks on all hookable plugins
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	hookCtx := plugins.HookContext{
 		SessionID: input.SessionID,
+		Config:    pluginConfig,
 	}
 
 	outputs := m.registry.RunHooks(ctx, plugins.HookBusy, hookCtx)
 
-	// 3. Print any outputs (for notifications)
+	// 4. Print any outputs (for notifications)
 	if len(outputs) > 0 {
 		fmt.Print(strings.Join(outputs, "\n"))
 	}

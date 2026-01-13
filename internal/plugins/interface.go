@@ -82,6 +82,7 @@ const (
 // HookContext provides context for hook handlers
 type HookContext struct {
 	SessionID string
+	Config    map[string]any // Plugin configuration
 }
 
 // Hookable is an optional interface for plugins that want to respond to state changes
