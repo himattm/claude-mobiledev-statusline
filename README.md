@@ -126,11 +126,13 @@ Prism uses a 3-tier config system (highest priority first):
 
 | Section | Description | Example |
 |---------|-------------|---------|
-| `dir` | Project name + subdirectory | `💎 prism/internal` |
+| `dir` | Project name + subdirectory | `💎 prism/src` or `💎 ⎇ worktree/src` |
 | `model` | Current model | `Opus 4.5` |
 | `context` | Context usage bar | `████░░░░▒▒ 56%` |
 | `linesChanged` | Uncommitted changes | `+123 -45` |
 | `cost` | Session cost | `$1.23` |
+
+The `dir` section shows `⎇` when you're in a git worktree.
 
 ### Context Bar
 

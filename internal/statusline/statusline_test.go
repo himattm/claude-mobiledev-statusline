@@ -463,3 +463,139 @@ func TestCalculateContextPct_FallsBackToLegacy(t *testing.T) {
 		t.Errorf("calculateContextPct should fall back to legacy (25%%), got: %d", pct)
 	}
 }
+
+// TestIsWorktree_MainRepo returns false for main repository
+func TestIsWorktree_MainRepo(t *testing.T) {
+	tmpDir := setupTestGitRepo(t)
+	defer os.RemoveAll(tmpDir)
+
+	sl := &StatusLine{
+		input: Input{
+			Workspace: WorkspaceInfo{
+				ProjectDir: tmpDir,
+			},
+		},
+	}
+
+	if sl.isWorktree() {
+		t.Error("isWorktree should return false for main repo")
+	}
+}
+
+// TestIsWorktree_Worktree returns true for a git worktree
+func TestIsWorktree_Worktree(t *testing.T) {
+	tmpDir := setupTestGitRepo(t)
+	defer os.RemoveAll(tmpDir)
+
+	// Create a worktree
+	worktreeDir := filepath.Join(os.TempDir(), "prism-test-worktree")
+	defer os.RemoveAll(worktreeDir)
+
+	cmd := exec.Command("git", "worktree", "add", worktreeDir, "HEAD")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to create worktree: %v", err)
+	}
+
+	sl := &StatusLine{
+		input: Input{
+			Workspace: WorkspaceInfo{
+				ProjectDir: worktreeDir,
+			},
+		},
+	}
+
+	if !sl.isWorktree() {
+		t.Error("isWorktree should return true for worktree")
+	}
+}
+
+// TestIsWorktree_NonGitDir returns false for non-git directory
+func TestIsWorktree_NonGitDir(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "prism-test-nogit-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	sl := &StatusLine{
+		input: Input{
+			Workspace: WorkspaceInfo{
+				ProjectDir: tmpDir,
+			},
+		},
+	}
+
+	if sl.isWorktree() {
+		t.Error("isWorktree should return false for non-git directory")
+	}
+}
+
+// TestIsWorktree_EmptyProjectDir returns false for empty project dir
+func TestIsWorktree_EmptyProjectDir(t *testing.T) {
+	sl := &StatusLine{
+		input: Input{
+			Workspace: WorkspaceInfo{
+				ProjectDir: "",
+			},
+		},
+	}
+
+	if sl.isWorktree() {
+		t.Error("isWorktree should return false for empty project dir")
+	}
+}
+
+// TestRenderDir_WorktreeIndicator shows ⎇ for worktrees
+func TestRenderDir_WorktreeIndicator(t *testing.T) {
+	tmpDir := setupTestGitRepo(t)
+	defer os.RemoveAll(tmpDir)
+
+	// Create a worktree
+	worktreeDir := filepath.Join(os.TempDir(), "prism-test-worktree-render")
+	defer os.RemoveAll(worktreeDir)
+
+	cmd := exec.Command("git", "worktree", "add", worktreeDir, "HEAD")
+	cmd.Dir = tmpDir
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to create worktree: %v", err)
+	}
+
+	sl := &StatusLine{
+		input: Input{
+			Workspace: WorkspaceInfo{
+				ProjectDir: worktreeDir,
+				CurrentDir: worktreeDir,
+			},
+		},
+		config: config.Config{Icon: "💎"},
+	}
+
+	result := sl.renderDir()
+
+	if !strings.Contains(result, "⎇") {
+		t.Errorf("renderDir should include ⎇ indicator for worktree, got: %s", result)
+	}
+}
+
+// TestRenderDir_NoIndicatorForMainRepo does not show ⎇ for main repo
+func TestRenderDir_NoIndicatorForMainRepo(t *testing.T) {
+	tmpDir := setupTestGitRepo(t)
+	defer os.RemoveAll(tmpDir)
+
+	sl := &StatusLine{
+		input: Input{
+			Workspace: WorkspaceInfo{
+				ProjectDir: tmpDir,
+				CurrentDir: tmpDir,
+			},
+		},
+		config: config.Config{Icon: "💎"},
+	}
+
+	result := sl.renderDir()
+
+	if strings.Contains(result, "⎇") {
+		t.Errorf("renderDir should not include ⎇ indicator for main repo, got: %s", result)
+	}
+}

@@ -10,12 +10,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/himattm/prism/internal/cache"
 	"github.com/himattm/prism/internal/colors"
 	"github.com/himattm/prism/internal/config"
 	"github.com/himattm/prism/internal/plugin"
 	"github.com/himattm/prism/internal/plugins"
 	"github.com/himattm/prism/internal/version"
 )
+
+// Package-level cache for statusline operations
+var statusCache = cache.New()
 
 // StatusLine handles rendering the status line
 type StatusLine struct {
@@ -135,10 +139,6 @@ func (sl *StatusLine) renderSection(section string) string {
 		return sl.runPlugin("android_devices")
 	case "devices":
 		return sl.runPlugin("devices") // legacy alias
-	case "gradle":
-		return sl.runPlugin("gradle")
-	case "xcode":
-		return sl.runPlugin("xcode")
 	default:
 		// Try to run as plugin
 		return sl.runPlugin(section)
@@ -146,7 +146,8 @@ func (sl *StatusLine) renderSection(section string) string {
 }
 
 func (sl *StatusLine) renderDir() string {
-	projectName := filepath.Base(sl.input.Workspace.ProjectDir)
+	projectDir := sl.input.Workspace.ProjectDir
+	projectName := filepath.Base(projectDir)
 	icon := sl.config.Icon
 	if icon != "" {
 		icon += " "
@@ -154,19 +155,55 @@ func (sl *StatusLine) renderDir() string {
 
 	// Calculate subdir if current differs from project
 	subdir := ""
-	if sl.input.Workspace.CurrentDir != "" && sl.input.Workspace.ProjectDir != "" {
-		if strings.HasPrefix(sl.input.Workspace.CurrentDir, sl.input.Workspace.ProjectDir) {
-			subdir = strings.TrimPrefix(sl.input.Workspace.CurrentDir, sl.input.Workspace.ProjectDir)
+	if sl.input.Workspace.CurrentDir != "" && projectDir != "" {
+		if strings.HasPrefix(sl.input.Workspace.CurrentDir, projectDir) {
+			subdir = strings.TrimPrefix(sl.input.Workspace.CurrentDir, projectDir)
 		}
 	}
 
+	// Check if we're in a worktree (prepend ⎇ indicator)
+	worktreeIndicator := ""
+	if sl.isWorktree() {
+		worktreeIndicator = fmt.Sprintf("%s⎇%s ", colors.Cyan, colors.Reset)
+	}
+
 	if subdir != "" {
-		return fmt.Sprintf("%s%s%s%s%s%s",
-			icon, colors.Dim, colors.Cyan, projectName, colors.Reset,
+		return fmt.Sprintf("%s%s%s%s%s%s%s",
+			icon, worktreeIndicator, colors.Dim, colors.Cyan, projectName, colors.Reset,
 			colors.Wrap(colors.Cyan, subdir))
 	}
 
-	return fmt.Sprintf("%s%s", icon, colors.Wrap(colors.Cyan, projectName))
+	return fmt.Sprintf("%s%s%s", icon, worktreeIndicator, colors.Wrap(colors.Cyan, projectName))
+}
+
+// isWorktree returns true if the project directory is a git worktree
+func (sl *StatusLine) isWorktree() bool {
+	projectDir := sl.input.Workspace.ProjectDir
+	if projectDir == "" {
+		return false
+	}
+
+	// Check cache first (worktree status rarely changes)
+	cacheKey := "worktree:" + projectDir
+	if cached, ok := statusCache.Get(cacheKey); ok {
+		return cached == "true"
+	}
+
+	// In a worktree, .git is a file (not a directory)
+	gitPath := filepath.Join(projectDir, ".git")
+	info, err := os.Stat(gitPath)
+	if err != nil {
+		statusCache.Set(cacheKey, "false", cache.WorktreeTTL)
+		return false
+	}
+
+	isWt := !info.IsDir()
+	if isWt {
+		statusCache.Set(cacheKey, "true", cache.WorktreeTTL)
+	} else {
+		statusCache.Set(cacheKey, "false", cache.WorktreeTTL)
+	}
+	return isWt
 }
 
 func (sl *StatusLine) renderModel() string {
@@ -292,10 +329,19 @@ func getGitDiffStats(projectDir string) (int, int) {
 		return 0, 0
 	}
 
+	// Check cache first
+	cacheKey := "diffstats:" + projectDir
+	if cached, ok := statusCache.Get(cacheKey); ok {
+		var added, removed int
+		fmt.Sscanf(cached, "%d,%d", &added, &removed)
+		return added, removed
+	}
+
 	cmd := exec.Command("git", "--no-optional-locks", "diff", "--numstat", "HEAD")
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
 	if err != nil {
+		statusCache.Set(cacheKey, "0,0", cache.GitTTL)
 		return 0, 0
 	}
 
@@ -308,6 +354,8 @@ func getGitDiffStats(projectDir string) (int, int) {
 		removed += r
 	}
 
+	// Cache the result
+	statusCache.Set(cacheKey, fmt.Sprintf("%d,%d", added, removed), cache.GitTTL)
 	return added, removed
 }
 
