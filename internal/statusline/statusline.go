@@ -131,8 +131,6 @@ func (sl *StatusLine) renderSection(section string) string {
 		return sl.renderCost()
 	case "git":
 		return sl.runPlugin("git")
-	case "worktree":
-		return sl.runPlugin("worktree")
 	case "android_devices":
 		return sl.runPlugin("android_devices")
 	case "devices":
@@ -144,7 +142,8 @@ func (sl *StatusLine) renderSection(section string) string {
 }
 
 func (sl *StatusLine) renderDir() string {
-	projectName := filepath.Base(sl.input.Workspace.ProjectDir)
+	projectDir := sl.input.Workspace.ProjectDir
+	projectName := filepath.Base(projectDir)
 	icon := sl.config.Icon
 	if icon != "" {
 		icon += " "
@@ -152,19 +151,41 @@ func (sl *StatusLine) renderDir() string {
 
 	// Calculate subdir if current differs from project
 	subdir := ""
-	if sl.input.Workspace.CurrentDir != "" && sl.input.Workspace.ProjectDir != "" {
-		if strings.HasPrefix(sl.input.Workspace.CurrentDir, sl.input.Workspace.ProjectDir) {
-			subdir = strings.TrimPrefix(sl.input.Workspace.CurrentDir, sl.input.Workspace.ProjectDir)
+	if sl.input.Workspace.CurrentDir != "" && projectDir != "" {
+		if strings.HasPrefix(sl.input.Workspace.CurrentDir, projectDir) {
+			subdir = strings.TrimPrefix(sl.input.Workspace.CurrentDir, projectDir)
 		}
 	}
 
+	// Check if we're in a worktree (prepend ⎇ indicator)
+	worktreeIndicator := ""
+	if sl.isWorktree() {
+		worktreeIndicator = fmt.Sprintf("%s⎇%s ", colors.Cyan, colors.Reset)
+	}
+
 	if subdir != "" {
-		return fmt.Sprintf("%s%s%s%s%s%s",
-			icon, colors.Dim, colors.Cyan, projectName, colors.Reset,
+		return fmt.Sprintf("%s%s%s%s%s%s%s",
+			icon, worktreeIndicator, colors.Dim, colors.Cyan, projectName, colors.Reset,
 			colors.Wrap(colors.Cyan, subdir))
 	}
 
-	return fmt.Sprintf("%s%s", icon, colors.Wrap(colors.Cyan, projectName))
+	return fmt.Sprintf("%s%s%s", icon, worktreeIndicator, colors.Wrap(colors.Cyan, projectName))
+}
+
+// isWorktree returns true if the project directory is a git worktree
+func (sl *StatusLine) isWorktree() bool {
+	projectDir := sl.input.Workspace.ProjectDir
+	if projectDir == "" {
+		return false
+	}
+
+	// In a worktree, .git is a file (not a directory)
+	gitPath := filepath.Join(projectDir, ".git")
+	info, err := os.Stat(gitPath)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }
 
 func (sl *StatusLine) renderModel() string {

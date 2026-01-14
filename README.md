@@ -126,11 +126,13 @@ Prism uses a 3-tier config system (highest priority first):
 
 | Section | Description | Example |
 |---------|-------------|---------|
-| `dir` | Project name + subdirectory | `💎 prism/internal` |
+| `dir` | Project name + worktree indicator | `💎 ⎇ prism` |
 | `model` | Current model | `Opus 4.5` |
 | `context` | Context usage bar | `████░░░░▒▒ 56%` |
 | `linesChanged` | Uncommitted changes | `+123 -45` |
 | `cost` | Session cost | `$1.23` |
+
+The `dir` section shows `⎇` when you're in a git worktree.
 
 ### Context Bar
 
@@ -152,7 +154,6 @@ Shows **actionable** usage - percentage of capacity before autocompact triggers:
 | Plugin | Description | Example |
 |--------|-------------|---------|
 | `git` | Branch, dirty, upstream | `main*+2 ⇣3⇡1` |
-| `worktree` | Git worktree indicator | `⌂ feature-branch` |
 | `android_devices` | Connected Android devices | `⬡ Pixel 6 (14)` |
 | `update` | Auto-update + indicator | `⬆` (yellow when update available) |
 
