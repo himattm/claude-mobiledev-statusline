@@ -32,6 +32,9 @@ func NewRegistry() *Registry {
 	r.registerWithCache(&AndroidPlugin{})
 	r.registerWithCache(&GitPlugin{})
 	r.registerWithCache(&UpdatePlugin{})
+	r.registerWithCache(&UsageBarsPlugin{})
+	r.registerWithCache(&UsageTextPlugin{})
+	r.registerWithCache(&UsagePlugin{})
 
 	return r
 }

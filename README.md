@@ -95,7 +95,7 @@ Prism uses a 3-tier config system (highest priority first):
 ```json
 {
   "icon": "🚀",
-  "sections": ["dir", "model", "context", "cost", "git", "android_devices"],
+  "sections": ["dir", "model", "context", "usage", "git", "android_devices"],
   "autocompactBuffer": 22.5
 }
 ```
@@ -105,7 +105,7 @@ Prism uses a 3-tier config system (highest priority first):
 ```json
 {
   "sections": [
-    ["dir", "model", "context", "cost", "git"],
+    ["dir", "model", "context", "usage", "git"],
     ["android_devices"]
   ]
 }
@@ -130,7 +130,57 @@ Prism uses a 3-tier config system (highest priority first):
 | `model` | Current model | `Opus 4.5` |
 | `context` | Context usage bar | `████░░░░▒▒ 56%` |
 | `linesChanged` | Uncommitted changes | `+123 -45` |
-| `cost` | Session cost | `$1.23` |
+| `usage` | **Auto-detects billing type** (see below) | `$1.23` or `3h:78% 5d:40%` |
+
+### Usage (Auto-Detect Billing)
+
+The `usage` section automatically detects your billing type and shows the appropriate information:
+
+- **API Billing users**: Shows session cost (e.g., `$1.23`)
+- **Max/Pro plan users**: Shows usage limits with countdown (e.g., `3h:78% 5d:40% 4d:25%`)
+
+This replaces the old `cost` section. Simply use `usage` in your sections array - no configuration needed for basic usage.
+
+#### Max/Pro Display Formats
+
+**Text format** (default):
+```
+3h:78% 5d:40% 4d:25%
+│      │      └─ Opus weekly: 4 days until reset, 25% used
+│      └─ Weekly limit: 5 days until reset, 40% used
+└─ Session limit: 3 hours until reset, 78% used
+```
+
+**Bars format**:
+```
+▂█ ▅▃ ▅▂
+││ ││ └┴─ Opus: time remaining | usage level
+│└─┴┴─ Weekly: time remaining | usage level
+└┴─ Session: time remaining | usage level
+```
+
+Colors indicate urgency: white (<70%), yellow (70-89%), red (90%+)
+
+#### Configuration
+
+```json
+{
+  "usage": {
+    "usage_plan": {
+      "style": "text",      // "text" or "bars"
+      "show_hours": true,   // 5-hour session limit
+      "show_days": true,    // 7-day weekly limit
+      "show_opus": true     // Opus-specific weekly limit
+    },
+    "api_billing": {
+      "decimals": 2,        // decimal places for cost
+      "color": "gray"       // color from palette
+    }
+  }
+}
+```
+
+> **Note:** Three related plugins exist: `usage`, `usage_bars`, and `usage_text`. If multiple are in your sections array, only the **first one listed** will render. Use `usage` for auto-detection, or `usage_bars`/`usage_text` if you're on Max/Pro and want a specific format.
 
 The `dir` section shows `⎇` when you're in a git worktree.
 
@@ -156,6 +206,9 @@ Shows **actionable** usage - percentage of capacity before autocompact triggers:
 | `git` | Branch, dirty, upstream | `main*+2 ⇣3⇡1` |
 | `android_devices` | Connected Android devices | `⬡ Pixel 6 (14)` |
 | `update` | Auto-update + indicator | `⬆` (yellow when update available) |
+| `usage` | Auto-detect: cost or plan limits | `$1.23` or `3h:78%` |
+| `usage_text` | Max/Pro limits (text only) | `3h:78% 5d:40%` |
+| `usage_bars` | Max/Pro limits (bars only) | `▂█ ▅▃ ▅▂` |
 
 ## Contributing Plugins
 
