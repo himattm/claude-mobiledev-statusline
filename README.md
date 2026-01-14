@@ -153,7 +153,6 @@ Shows **actionable** usage - percentage of capacity before autocompact triggers:
 |--------|-------------|---------|
 | `git` | Branch, dirty, upstream | `main*+2 ⇣3⇡1` |
 | `android_devices` | Connected Android devices | `⬡ Pixel 6 (14)` |
-| `mcp` | MCP server count | `mcp:2` |
 | `update` | Auto-update + indicator | `⬆` (yellow when update available) |
 
 ## Contributing Plugins

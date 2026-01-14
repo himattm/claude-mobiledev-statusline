@@ -30,7 +30,6 @@ func NewRegistry() *Registry {
 
 	// Register native plugins with shared cache
 	r.registerWithCache(&AndroidPlugin{})
-	r.registerWithCache(&MCPPlugin{})
 	r.registerWithCache(&GitPlugin{})
 	r.registerWithCache(&UpdatePlugin{})
 
