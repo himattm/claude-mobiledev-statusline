@@ -155,7 +155,7 @@ This replaces the old `cost` section. Simply use `usage` in your sections array 
 ```
 ▂█ ▅▃ ▅▂
 ││ ││ └┴─ Opus: time remaining | usage level
-│└─┴┴─ Weekly: time remaining | usage level
+││ └┴─ Weekly: time remaining | usage level
 └┴─ Session: time remaining | usage level
 ```
 
