@@ -1,4 +1,4 @@
 package version
 
 // Version is the single source of truth for Prism version
-const Version = "0.3.1"
+const Version = "0.4.0"

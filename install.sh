@@ -21,11 +21,155 @@ REPO="himattm/prism"
 BRANCH="main"
 CLAUDE_DIR="$HOME/.claude"
 SETTINGS_FILE="$CLAUDE_DIR/settings.json"
+GLOBAL_CONFIG="$CLAUDE_DIR/prism-config.json"
 
 info() { echo -e "${CYAN}$1${RESET}"; }
 success() { echo -e "${GREEN}$1${RESET}"; }
 warn() { echo -e "${YELLOW}$1${RESET}"; }
 error() { echo -e "${RED}$1${RESET}"; exit 1; }
+
+# Version comparison: returns 0 if $1 < $2
+version_lt() {
+    [ "$1" = "$2" ] && return 1
+    local IFS=.
+    local i v1=($1) v2=($2)
+    for ((i=0; i<${#v1[@]} || i<${#v2[@]}; i++)); do
+        local n1=${v1[i]:-0}
+        local n2=${v2[i]:-0}
+        ((n1 < n2)) && return 0
+        ((n1 > n2)) && return 1
+    done
+    return 1
+}
+
+# Get installed prism version (empty if not installed)
+get_installed_version() {
+    if [ -x "$CLAUDE_DIR/prism" ]; then
+        "$CLAUDE_DIR/prism" version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo ""
+    else
+        echo ""
+    fi
+}
+
+# Remove a section from config file
+# Usage: remove_section "mcp" "/path/to/config.json"
+remove_section() {
+    local section="$1"
+    local config_file="$2"
+
+    [ ! -f "$config_file" ] && return
+
+    # Check if section exists in the file
+    if grep -q "\"$section\"" "$config_file" 2>/dev/null; then
+        # Use jq to remove the section from arrays (handles both flat and nested)
+        local tmp=$(mktemp)
+        jq --arg s "$section" '
+            if .sections then
+                .sections |= (
+                    if type == "array" then
+                        if (.[0] | type) == "array" then
+                            # Nested array: [[...], [...]]
+                            map(map(select(. != $s)))
+                        else
+                            # Flat array: [...]
+                            map(select(. != $s))
+                        end
+                    else
+                        .
+                    end
+                )
+            else
+                .
+            end
+        ' "$config_file" > "$tmp" && mv "$tmp" "$config_file"
+        return 0
+    fi
+    return 1
+}
+
+# Rename a section in config file
+# Usage: rename_section "old" "new" "/path/to/config.json"
+rename_section() {
+    local old_name="$1"
+    local new_name="$2"
+    local config_file="$3"
+
+    [ ! -f "$config_file" ] && return
+
+    if grep -q "\"$old_name\"" "$config_file" 2>/dev/null; then
+        local tmp=$(mktemp)
+        jq --arg old "$old_name" --arg new "$new_name" '
+            if .sections then
+                .sections |= (
+                    if type == "array" then
+                        if (.[0] | type) == "array" then
+                            map(map(if . == $old then $new else . end))
+                        else
+                            map(if . == $old then $new else . end)
+                        end
+                    else
+                        .
+                    end
+                )
+            else
+                .
+            end
+        ' "$config_file" > "$tmp" && mv "$tmp" "$config_file"
+        return 0
+    fi
+    return 1
+}
+
+# Run migrations based on version
+# Each migration specifies the version it was introduced in
+run_migrations() {
+    local old_version="$1"
+    local migrated=false
+
+    # Fresh install - no migrations needed
+    [ -z "$old_version" ] && return
+
+    info "Checking for config migrations..."
+
+    # ============================================================
+    # MIGRATIONS - Add new migrations at the bottom
+    # ============================================================
+
+    # v0.4.0: Remove gradle and xcode plugins
+    if version_lt "$old_version" "0.4.0"; then
+        if remove_section "gradle" "$GLOBAL_CONFIG"; then
+            success "  Migrated: removed 'gradle' section (plugin removed)"
+            migrated=true
+        fi
+        if remove_section "xcode" "$GLOBAL_CONFIG"; then
+            success "  Migrated: removed 'xcode' section (plugin removed)"
+            migrated=true
+        fi
+    fi
+
+    # v0.4.0: Remove mcp plugin
+    if version_lt "$old_version" "0.4.0"; then
+        if remove_section "mcp" "$GLOBAL_CONFIG"; then
+            success "  Migrated: removed 'mcp' section (plugin removed)"
+            migrated=true
+        fi
+    fi
+
+    # Example future migration:
+    # v0.5.0: Rename cost to usage
+    # if version_lt "$old_version" "0.5.0"; then
+    #     if rename_section "cost" "usage" "$GLOBAL_CONFIG"; then
+    #         success "  Migrated: renamed 'cost' to 'usage'"
+    #         migrated=true
+    #     fi
+    # fi
+
+    # ============================================================
+
+    if [ "$migrated" = false ]; then
+        echo -e "  ${DIM}No migrations needed${RESET}"
+    fi
+}
 
 echo ""
 echo -e "${CYAN}💎 Prism Installer${RESET}"
@@ -45,6 +189,12 @@ fi
 if [ ! -d "$CLAUDE_DIR" ]; then
     info "Creating $CLAUDE_DIR..."
     mkdir -p "$CLAUDE_DIR"
+fi
+
+# Capture current version before upgrade (for migrations)
+OLD_VERSION=$(get_installed_version)
+if [ -n "$OLD_VERSION" ]; then
+    echo -e "  ${DIM}Current version: $OLD_VERSION${RESET}"
 fi
 
 # Download Go binary
@@ -93,6 +243,9 @@ if [ -f "$CLAUDE_DIR/prism-idle-hook.sh" ] || [ -f "$CLAUDE_DIR/prism-busy-hook.
     rm -f "$CLAUDE_DIR/prism-idle-hook.sh" "$CLAUDE_DIR/prism-busy-hook.sh" "$CLAUDE_DIR/prism-update-hook.sh"
     success "  Cleaned up legacy hook scripts"
 fi
+
+# Run config migrations if upgrading
+run_migrations "$OLD_VERSION"
 
 # Update settings.json
 info "Configuring Claude Code settings..."
