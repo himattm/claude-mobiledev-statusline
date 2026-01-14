@@ -18,7 +18,7 @@ import (
 
 const (
 	updateCheckURL  = "https://api.github.com/repos/himattm/prism/releases/latest"
-	updateCacheTTL  = 24 * time.Hour
+	updateCacheTTL  = 8 * time.Hour
 	updateCacheFile = "prism-update-check"
 )
 
