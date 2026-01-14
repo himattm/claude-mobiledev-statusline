@@ -10,12 +10,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/himattm/prism/internal/cache"
 	"github.com/himattm/prism/internal/colors"
 	"github.com/himattm/prism/internal/config"
 	"github.com/himattm/prism/internal/plugin"
 	"github.com/himattm/prism/internal/plugins"
 	"github.com/himattm/prism/internal/version"
 )
+
+// Package-level cache for statusline operations
+var statusCache = cache.New()
 
 // StatusLine handles rendering the status line
 type StatusLine struct {
@@ -179,13 +183,27 @@ func (sl *StatusLine) isWorktree() bool {
 		return false
 	}
 
+	// Check cache first (worktree status rarely changes)
+	cacheKey := "worktree:" + projectDir
+	if cached, ok := statusCache.Get(cacheKey); ok {
+		return cached == "true"
+	}
+
 	// In a worktree, .git is a file (not a directory)
 	gitPath := filepath.Join(projectDir, ".git")
 	info, err := os.Stat(gitPath)
 	if err != nil {
+		statusCache.Set(cacheKey, "false", cache.WorktreeTTL)
 		return false
 	}
-	return !info.IsDir()
+
+	isWt := !info.IsDir()
+	if isWt {
+		statusCache.Set(cacheKey, "true", cache.WorktreeTTL)
+	} else {
+		statusCache.Set(cacheKey, "false", cache.WorktreeTTL)
+	}
+	return isWt
 }
 
 func (sl *StatusLine) renderModel() string {
@@ -311,10 +329,19 @@ func getGitDiffStats(projectDir string) (int, int) {
 		return 0, 0
 	}
 
+	// Check cache first
+	cacheKey := "diffstats:" + projectDir
+	if cached, ok := statusCache.Get(cacheKey); ok {
+		var added, removed int
+		fmt.Sscanf(cached, "%d,%d", &added, &removed)
+		return added, removed
+	}
+
 	cmd := exec.Command("git", "--no-optional-locks", "diff", "--numstat", "HEAD")
 	cmd.Dir = projectDir
 	output, err := cmd.Output()
 	if err != nil {
+		statusCache.Set(cacheKey, "0,0", cache.GitTTL)
 		return 0, 0
 	}
 
@@ -327,6 +354,8 @@ func getGitDiffStats(projectDir string) (int, int) {
 		removed += r
 	}
 
+	// Cache the result
+	statusCache.Set(cacheKey, fmt.Sprintf("%d,%d", added, removed), cache.GitTTL)
 	return added, removed
 }
 
