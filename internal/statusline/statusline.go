@@ -139,8 +139,6 @@ func (sl *StatusLine) renderSection(section string) string {
 		return sl.runPlugin("gradle")
 	case "xcode":
 		return sl.runPlugin("xcode")
-	case "mcp":
-		return sl.runPlugin("mcp")
 	default:
 		// Try to run as plugin
 		return sl.runPlugin(section)
