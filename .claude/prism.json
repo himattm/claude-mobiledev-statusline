@@ -1,7 +1,7 @@
 {
   "icon": "💎",
   "sections": [
-    ["dir", "model", "context", "linesChanged", "cost", "git", "gradle", "xcode", "mcp"],
+    ["dir", "model", "context", "linesChanged", "cost", "git"],
     ["android_devices"]
   ]
 }
