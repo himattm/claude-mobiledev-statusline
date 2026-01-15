@@ -24,7 +24,7 @@ func (c Config) GetAutocompactBuffer() float64 {
 
 // DefaultSections returns the default section order
 func DefaultSections() []string {
-	return []string{"dir", "model", "context", "linesChanged", "cost", "git", "android_devices"}
+	return []string{"dir", "model", "context", "linesChanged", "usage", "git", "android_devices"}
 }
 
 // Load reads and merges configuration from all config files
@@ -213,7 +213,7 @@ func Init(dir string) error {
 
 	cfg := Config{
 		Icon:     "💎",
-		Sections: []string{"dir", "model", "context", "cost", "git"},
+		Sections: []string{"dir", "model", "context", "usage", "git"},
 	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -238,7 +238,7 @@ func InitGlobal() error {
 	}
 
 	cfg := Config{
-		Sections: []string{"dir", "model", "context", "cost", "git"},
+		Sections: []string{"dir", "model", "context", "usage", "git"},
 	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
