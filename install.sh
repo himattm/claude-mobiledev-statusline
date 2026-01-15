@@ -247,6 +247,17 @@ fi
 # Run config migrations if upgrading
 run_migrations "$OLD_VERSION"
 
+# Create global config if it doesn't exist
+if [ ! -f "$GLOBAL_CONFIG" ]; then
+    info "Creating global config..."
+    cat > "$GLOBAL_CONFIG" << 'EOF'
+{
+  "sections": ["dir", "model", "context", "usage", "git"]
+}
+EOF
+    success "  Created $GLOBAL_CONFIG"
+fi
+
 # Update settings.json
 info "Configuring Claude Code settings..."
 
@@ -339,10 +350,6 @@ echo -e "  ${DIM}1.${RESET} .claude/prism.local.json    ${DIM}Your personal over
 echo -e "  ${DIM}2.${RESET} .claude/prism.json          ${DIM}Repo config (commit for your team)${RESET}"
 echo -e "  ${DIM}3.${RESET} ~/.claude/prism-config.json ${DIM}Your global defaults${RESET}"
 echo ""
-echo -e "${CYAN}Quick setup:${RESET}"
-echo -e "  ${DIM}# Create global defaults${RESET}"
-echo "  ~/.claude/prism init-global"
-echo ""
-echo -e "  ${DIM}# Create repo config${RESET}"
+echo -e "${CYAN}Optional:${RESET} Create a repo-specific config with:"
 echo "  ~/.claude/prism init"
 echo ""
