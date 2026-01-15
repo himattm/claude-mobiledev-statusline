@@ -37,7 +37,8 @@ func main() {
 		handlePluginCommand(os.Args[2:])
 
 	case "update":
-		handleUpdate()
+		autoMode := len(os.Args) > 2 && os.Args[2] == "--auto"
+		handleUpdate(autoMode)
 
 	case "check-update":
 		handleCheckUpdate()
@@ -171,31 +172,43 @@ func handlePluginCommand(args []string) {
 	}
 }
 
-func handleUpdate() {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func handleUpdate(autoMode bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	fmt.Println("Checking for updates...")
+	if !autoMode {
+		fmt.Println("Checking for updates...")
+	}
 
 	info, err := update.Check(ctx)
 	if err != nil {
-		fmt.Printf("Current version: %s\n", version.Version)
-		fmt.Fprintf(os.Stderr, "\nCannot update: %v\n", err)
+		if !autoMode {
+			fmt.Printf("Current version: %s\n", version.Version)
+			fmt.Fprintf(os.Stderr, "\nCannot update: %v\n", err)
+		}
 		os.Exit(1)
 	}
 
-	fmt.Printf("Current version: %s\n", info.CurrentVersion)
-	fmt.Printf("Latest version:  %s\n", info.LatestVersion)
+	if !autoMode {
+		fmt.Printf("Current version: %s\n", info.CurrentVersion)
+		fmt.Printf("Latest version:  %s\n", info.LatestVersion)
+	}
 
 	if !info.UpdateAvailable {
-		fmt.Println("\nYou're already on the latest version!")
+		if !autoMode {
+			fmt.Println("\nYou're already on the latest version!")
+		}
 		return
 	}
 
-	fmt.Println("\nDownloading update...")
+	if !autoMode {
+		fmt.Println("\nDownloading update...")
+	}
 
 	if err := update.Download(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error downloading update: %v\n", err)
+		if !autoMode {
+			fmt.Fprintf(os.Stderr, "Error downloading update: %v\n", err)
+		}
 		os.Exit(1)
 	}
 
@@ -203,7 +216,17 @@ func handleUpdate() {
 	cacheFile := filepath.Join(os.TempDir(), "prism-update-check")
 	os.Remove(cacheFile)
 
-	fmt.Printf("\nUpdated to %s!\n", info.LatestVersion)
+	// Clean up lock file (for both auto and manual modes)
+	lockFile := filepath.Join(os.TempDir(), "prism-update-lock")
+	os.Remove(lockFile)
+
+	// Write marker file for auto-update tracking
+	if autoMode {
+		markerFile := filepath.Join(os.TempDir(), "prism-auto-installed")
+		os.WriteFile(markerFile, []byte(info.LatestVersion), 0644)
+	} else {
+		fmt.Printf("\nUpdated to %s!\n", info.LatestVersion)
+	}
 }
 
 func handleCheckUpdate() {

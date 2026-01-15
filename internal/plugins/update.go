@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/himattm/prism/internal/cache"
 	"github.com/himattm/prism/internal/plugin"
-	"github.com/himattm/prism/internal/update"
 )
 
 const (
@@ -249,14 +250,47 @@ func (p *UpdatePlugin) handleAutoInstall(hookCtx HookContext) (string, error) {
 		return "", nil // Already installed this session
 	}
 
-	// Download in background (hook has 5s timeout, download may take longer)
-	go func() {
-		dlCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		if err := update.Download(dlCtx); err == nil {
-			os.WriteFile(markerFile, []byte(cacheData.RemoteVersion), 0644)
+	// Check if another instance is already updating (lock file)
+	lockFile := filepath.Join(os.TempDir(), "prism-update-lock")
+	if _, err := os.Stat(lockFile); err == nil {
+		// Lock exists - check if it's stale (older than 2 minutes)
+		if info, err := os.Stat(lockFile); err == nil {
+			if time.Since(info.ModTime()) < 2*time.Minute {
+				return "", nil // Another instance is updating
+			}
+			// Stale lock, remove it
+			os.Remove(lockFile)
 		}
-	}()
+	}
+
+	// Create lock file
+	if err := os.WriteFile(lockFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+		return "", nil
+	}
+
+	// Get path to prism binary
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		os.Remove(lockFile)
+		return "", nil
+	}
+	prismPath := filepath.Join(homeDir, ".claude", "prism")
+
+	// Spawn detached process to run "prism update"
+	// This survives parent process exit (unlike goroutines)
+	// The --auto flag will clean up the lock file when done
+	cmd := exec.Command(prismPath, "update", "--auto")
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+	// Detach from parent process group
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+	if err := cmd.Start(); err != nil {
+		os.Remove(lockFile)
+		return "", nil
+	}
 
 	// Return notification that update is starting
 	cyan := "\033[36m"
