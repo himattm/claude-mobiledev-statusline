@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -215,6 +216,24 @@ func compareVersions(a, b string) int {
 	return 0
 }
 
+// copyFile copies a file from src to dst
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
+}
+
 // OnHook implements Hookable interface for auto-update and notifications
 func (p *UpdatePlugin) OnHook(ctx context.Context, hookType HookType, hookCtx HookContext) (string, error) {
 	// Handle auto-install on idle
@@ -286,12 +305,24 @@ func (p *UpdatePlugin) handleAutoInstall(hookCtx HookContext) (string, error) {
 	}
 	prismPath := filepath.Join(homeDir, ".claude", "prism")
 
+	// Copy binary to temp location to avoid file handle conflicts with Claude Code
+	// (Claude Code keeps the binary open, which can interfere with spawned processes)
+	tempBinary := filepath.Join(os.TempDir(), "prism-updater")
+	if err := copyFile(prismPath, tempBinary); err != nil {
+		os.Remove(lockFile)
+		return "", nil
+	}
+	if err := os.Chmod(tempBinary, 0755); err != nil {
+		os.Remove(lockFile)
+		return "", nil
+	}
+
 	// Spawn detached process to run "prism update"
 	// This survives parent process exit (unlike goroutines)
 	// The --auto flag will clean up the lock file when done
-	cmd := exec.Command(prismPath, "update", "--auto")
-	cmd.Stdout = nil
+	cmd := exec.Command(tempBinary, "update", "--auto")
 	cmd.Stderr = nil
+	cmd.Stdout = nil
 	cmd.Stdin = nil
 	// Detach from parent process group
 	cmd.SysProcAttr = &syscall.SysProcAttr{
