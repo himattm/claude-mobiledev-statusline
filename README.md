@@ -2,6 +2,8 @@
 
 A fast, customizable, and colorful status line for Claude Code.
 
+![Release](https://img.shields.io/github/v/release/himattm/prism?style=flat-square&label=release&color=00ADD8&logo=go&logoColor=white)
+
 ![Example](screenshots/example.png)
 
 ## Features
