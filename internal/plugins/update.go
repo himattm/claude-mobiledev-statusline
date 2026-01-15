@@ -63,6 +63,11 @@ func (p *UpdatePlugin) Execute(ctx context.Context, input plugin.Input) (string,
 	// Check file-based cache first
 	cacheData, cacheExists := loadUpdateCache()
 
+	// Invalidate cache if local version changed (e.g., user manually updated)
+	if cacheExists && cacheData.LocalVersion != input.Prism.Version {
+		cacheExists = false
+	}
+
 	// If cache exists and is fresh, use it
 	if cacheExists {
 		age := time.Since(time.Unix(cacheData.CheckedAt, 0))
@@ -244,10 +249,15 @@ func (p *UpdatePlugin) handleAutoInstall(hookCtx HookContext) (string, error) {
 		return "", nil
 	}
 
-	// Check if we've already auto-installed this session
+	// Check if we've already auto-installed this version
 	markerFile := filepath.Join(os.TempDir(), "prism-auto-installed")
-	if _, err := os.Stat(markerFile); err == nil {
-		return "", nil // Already installed this session
+	if data, err := os.ReadFile(markerFile); err == nil {
+		installedVersion := strings.TrimSpace(string(data))
+		if installedVersion == cacheData.RemoteVersion {
+			return "", nil // Already installed this version
+		}
+		// Different version - remove stale marker
+		os.Remove(markerFile)
 	}
 
 	// Check if another instance is already updating (lock file)
